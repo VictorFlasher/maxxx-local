@@ -2,13 +2,14 @@
 Маршруты аутентификации: регистрация, вход, извлечение пользователя из токена.
 """
 
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..models.user import create_user, get_user_by_email
 from ..models.user import get_user_by_id
@@ -31,6 +32,14 @@ class UserRegister(BaseModel):
     username: str
     email: str
     password: str
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email_format(cls, v):
+        """Проверяет формат email."""
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Некорректный формат email')
+        return v.lower()
 
 
 class UserLogin(BaseModel):
