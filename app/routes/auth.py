@@ -6,20 +6,43 @@
 - Аутентификация и выдача JWT-токенов
 - Проверка валидности токенов и статуса пользователей
 - Вспомогательные функции для WebSocket аутентификации
+- Безопасное управление паролями в памяти
+- Логирование событий безопасности
 """
 
 import re
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt
 from pydantic import BaseModel, field_validator
+from slowapi import SlowApi, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from ..models.user import create_user, get_user_by_email, get_user_by_id
+from ..models.chat import log_connection_event
 import bcrypt
 import os
+
+# === Rate Limiting (ограничение частоты запросов) ===
+# Инициализация SlowAPI для защиты от brute-force атак
+limiter = SlowApi(key_func=get_remote_address)
+
+# === Конфигурация логирования ===
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 # === Конфигурация JWT ===
 # Секретный ключ для подписи JWT-токенов (в production использовать переменную окружения)
@@ -66,7 +89,58 @@ class UserLogin(BaseModel):
     password: str
 
 
-# === Вспомогательные функции ===
+# === Вспомогательные функции безопасности ===
+
+def secure_hash_password(password: str) -> str:
+    """
+    Хеширует пароль и безопасно очищает его из памяти.
+    
+    Использует bytearray для возможности перезаписи чувствительных данных.
+    
+    Args:
+        password: Plain-текст пароля
+        
+    Returns:
+        Хеш пароля
+    """
+    password_bytes = None
+    try:
+        # Преобразуем в изменяемый bytearray
+        password_bytes = bytearray(password.encode('utf-8'))
+        # bcrypt требует bytes, конвертируем обратно для хеширования
+        hash_result = bcrypt.hashpw(bytes(password_bytes), bcrypt.gensalt())
+        return hash_result.decode('utf-8')
+    finally:
+        # Очищаем память от пароля
+        if password_bytes is not None:
+            for i in range(len(password_bytes)):
+                password_bytes[i] = 0
+            del password_bytes
+
+def secure_verify_password(plain_password: str, stored_hash: str) -> bool:
+    """
+    Проверяет пароль против хеша и безопасно очищает plain-текст из памяти.
+    
+    Args:
+        plain_password: Plain-текст пароля для проверки
+        stored_hash: Сохранённый хеш пароля
+        
+    Returns:
+        True если пароль верный, False иначе
+    """
+    password_bytes = None
+    try:
+        password_bytes = bytearray(plain_password.encode('utf-8'))
+        # bcrypt требует bytes, конвертируем bytearray в bytes
+        is_valid = bcrypt.checkpw(bytes(password_bytes), stored_hash.encode('utf-8'))
+        return is_valid
+    finally:
+        # Очищаем память от пароля
+        if password_bytes is not None:
+            for i in range(len(password_bytes)):
+                password_bytes[i] = 0
+            del password_bytes
+
 def create_access_token(data: Dict[str, Any]) -> str:
     """
     Создаёт JWT-токен с заданными данными и временем жизни.
@@ -84,27 +158,58 @@ def create_access_token(data: Dict[str, Any]) -> str:
 
 # === Роутеры ===
 @router.post("/register", summary="Регистрация нового пользователя")
-def register(user: UserRegister):
-    """Создаёт нового пользователя. Пароль хешируется автоматически."""
+@limiter.limit("5/minute")  # Максимум 5 регистраций в минуту с одного IP
+def register(request: Request, user: UserRegister):
+    """
+    Создаёт нового пользователя. Пароль хешируется безопасно.
+    
+    Логирует попытки регистрации (успешные и неудачные).
+    Защищено от brute-force атак (rate limiting).
+    """
     try:
-        create_user(user.username, user.email, user.password)
+        # Используем безопасное хеширование с очисткой памяти
+        create_user(user.username, user.email, user.password, secure_hash=True)
+        logger.info(f"Успешная регистрация пользователя: {user.email}")
         return {"message": "Пользователь создан"}
     except ValueError as e:
+        logger.warning(f"Неудачная регистрация: {user.email} - {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Ошибка при регистрации: {user.email} - {str(e)}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 @router.post("/login", summary="Вход в систему")
-def login(user: UserLogin):
-    """Аутентифицирует пользователя и возвращает JWT-токен."""
+@limiter.limit("10/minute")  # Максимум 10 попыток входа в минуту с одного IP
+def login(request: Request, user: UserLogin):
+    """
+    Аутентифицирует пользователя и возвращает JWT-токен.
+    
+    Логирует попытки входа (успешные и неудачные).
+    Использует безопасную проверку пароля с очисткой памяти.
+    Защищено от brute-force атак (rate limiting).
+    """
     db_user = get_user_by_email(user.email)
     if not db_user:
+        logger.warning(f"Попытка входа с несуществующим email: {user.email}")
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
 
     stored_hash = db_user[2]
-    if not bcrypt.checkpw(user.password.encode("utf-8"), stored_hash.encode("utf-8")):
+    
+    # Безопасная проверка пароля с очисткой памяти
+    if not secure_verify_password(user.password, stored_hash):
+        logger.warning(f"Неудачная попытка входа: {user.email}")
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
 
     token = create_access_token({"sub": db_user[1], "user_id": db_user[0]})
+    logger.info(f"Успешный вход пользователя: {user.email} (ID: {db_user[0]})")
+    
+    # Логируем событие подключения
+    try:
+        log_connection_event(db_user[0], 'login')
+    except Exception as e:
+        logger.error(f"Ошибка логирования события входа: {str(e)}")
+    
     return {"access_token": token, "token_type": "bearer"}
 
 

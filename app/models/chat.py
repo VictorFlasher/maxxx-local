@@ -368,3 +368,30 @@ def get_chat_type(chat_id: int) -> str:
     finally:
         cur.close()
         conn.close()
+
+
+def log_connection_event(user_id: int, event_type: str) -> None:
+    """
+    Логирует событие подключения или отключения пользователя.
+    
+    Args:
+        user_id: ID пользователя
+        event_type: Тип события ('login', 'logout', 'websocket_connect', 'websocket_disconnect')
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO connection_logs (user_id, event_type, timestamp)
+            VALUES (%s, %s, NOW())
+        """, (user_id, event_type))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        # Не выбрасываем ошибку, чтобы не ломать основной функционал
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка логирования события подключения: {e}")
+    finally:
+        cur.close()
+        conn.close()

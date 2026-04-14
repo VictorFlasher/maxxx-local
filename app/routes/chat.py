@@ -26,6 +26,7 @@ from fastapi import (
     BackgroundTasks,
 )
 from pydantic import BaseModel
+import magic
 
 from ..database import get_db_connection
 from .auth import get_current_user, get_current_user_from_header
@@ -49,6 +50,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Разрешённые расширения файлов для загрузки
 ALLOWED_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".txt", ".pdf"}
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 МБ
+
+# Соответствие MIME-типов и расширений для валидации по magic numbers
+ALLOWED_MIME_TYPES = {
+    "image/jpeg": [".jpg", ".jpeg"],
+    "image/png": [".png"],
+    "image/gif": [".gif"],
+    "text/plain": [".txt"],
+    "application/pdf": [".pdf"],
+}
 
 # === Глобальное хранилище WebSocket-соединений ===
 # Структура: {chat_id: {user_id: websocket}}
@@ -370,6 +380,7 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
     """
     Загружает файл в указанный чат. Поддерживаются только безопасные форматы.
     Максимальный размер файла: 2 МБ.
+    Проверяет расширение и MIME-тип файла (magic numbers) для безопасности.
     """
     # Проверка участия в чате
     if not is_user_in_chat(chat_id, current_user_id):
@@ -385,15 +396,36 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
 
     # Проверка расширения
     _, ext = os.path.splitext(file.filename or "")
-    if ext.lower() not in ALLOWED_FILE_EXTENSIONS:
+    ext_lower = ext.lower()
+    if ext_lower not in ALLOWED_FILE_EXTENSIONS:
         allowed = ", ".join(ALLOWED_FILE_EXTENSIONS)
         raise HTTPException(
             status_code=400,
             detail=f"Недопустимый тип файла. Разрешены: {allowed}"
         )
 
+    # === Валидация по magic numbers (MIME-тип) ===
+    try:
+        mime_type = magic.from_buffer(contents[:1024], mime=True)
+        
+        # Проверяем, что MIME-тип разрешён
+        if mime_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Небезопасный тип файла (MIME: {mime_type})"
+            )
+        
+        # Проверяем соответствие расширения и MIME-типа
+        if ext_lower not in ALLOWED_MIME_TYPES[mime_type]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Несоответствие расширения и типа файла (расширение: {ext_lower}, MIME: {mime_type})"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка проверки файла: {str(e)}")
+
     # Сохранение
-    safe_filename = f"{uuid.uuid4().hex}{ext.lower()}"
+    safe_filename = f"{uuid.uuid4().hex}{ext_lower}"
     filepath = os.path.join(UPLOAD_DIR, safe_filename)
 
     with open(filepath, "wb") as f:
@@ -405,7 +437,7 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
         chat_id=chat_id,
         user_id=current_user_id,
         file_url=f"/uploads/{safe_filename}",
-        file_type=ext.lower()
+        file_type=ext_lower
     )
 
     return {"file_url": f"/uploads/{safe_filename}"}

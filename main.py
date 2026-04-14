@@ -5,14 +5,28 @@ load_dotenv()
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates  # ← добавили
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
 
 from app.routes import auth, config, chat, admin
+from app.routes.auth import limiter  # Импортируем экземпляр лимитера
 
 app = FastAPI(
     title="Maxxx-Local Chat API",
     description="Безопасный многопользовательский чат",
     version="1.0.0",
 )
+
+# Подключаем SlowAPI к приложению
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Обработчик превышения лимита запросов."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Слишком много запросов. Пожалуйста, попробуйте позже."},
+    )
 
 # Шаблоны
 templates = Jinja2Templates(directory="templates")

@@ -17,7 +17,7 @@ from typing import Optional, Tuple, List
 from ..database import get_db_connection
 
 
-def create_user(username: str, email: str, password: str) -> None:
+def create_user(username: str, email: str, password: str, secure_hash: bool = True) -> None:
     """
     Регистрирует нового пользователя с хешированным паролем.
 
@@ -25,19 +25,30 @@ def create_user(username: str, email: str, password: str) -> None:
         username: уникальное имя пользователя
         email: уникальный email (должен содержать @ и домен)
         password: пароль в открытом виде (будет захеширован)
+        secure_hash: если True, использует безопасное хеширование с очисткой памяти
 
     Raises:
         ValueError: если пользователь с таким email или username уже существует, 
                     или email некорректен
     """
     # Проверка формата email
-    import re
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         raise ValueError("Некорректный формат email")
     
     email = email.lower()  # Приводим к нижнему регистру
     
-    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    # Безопасное хеширование пароля с очисткой памяти
+    password_bytes = None
+    try:
+        password_bytes = bytearray(password.encode('utf-8'))
+        hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("utf-8")
+    finally:
+        # Очищаем память от пароля
+        if password_bytes is not None:
+            for i in range(len(password_bytes)):
+                password_bytes[i] = 0
+            del password_bytes
+    
     conn = get_db_connection()
     cur = conn.cursor()
     try:
