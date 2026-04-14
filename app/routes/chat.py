@@ -1,12 +1,18 @@
 """
 Маршруты чата: WebSocket в реальном времени, создание чатов, история, загрузка файлов.
+
+Этот модуль обрабатывает:
+- WebSocket соединения для обмена сообщениями в реальном времени
+- HTTP endpoints для управления чатами (создание, удаление, приглашение)
+- Загрузку файлов в чаты
+- Отслеживание статуса пользователей "в сети"
 """
 
 import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from fastapi import (
     APIRouter,
@@ -34,12 +40,13 @@ from ..models.chat import (
     delete_private_chat,
     get_chat_type,
 )
-from ..models.user import get_username, get_all_users
+from ..models.user import get_username, get_all_users, search_users
 
 # === Конфигурация ===
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Разрешённые расширения файлов для загрузки
 ALLOWED_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".txt", ".pdf"}
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 МБ
 
@@ -47,11 +54,17 @@ MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 МБ
 # Структура: {chat_id: {user_id: websocket}}
 active_connections: Dict[int, Dict[int, WebSocket]] = {}
 
+# === Глобальное хранилище статусов пользователей "в сети" ===
+# Структура: {user_id: set of chat_ids where user is online}
+online_users: Dict[int, Set[int]] = {}
+
 router = APIRouter()
 
-# === Модели запросов ===
+
+# === Модели запросов/ответов ===
+
 class CreatePrivateChatRequest(BaseModel):
-    """Запрос на создание личного чата."""
+    """Запрос на создание личного чата между двумя пользователями."""
     user1_id: int
     user2_id: int
 
@@ -62,8 +75,8 @@ class CreateGroupChatRequest(BaseModel):
 
 
 class InviteUserRequest(BaseModel):
-    """Запрос на приглашение пользователя в чат."""
-    user_id: int
+    """Запрос на приглашение пользователя в групповой чат по email или username."""
+    user_email_or_username: str
 
 # === Вспомогательные функции ===
 def _get_chat_members(chat_id: int) -> List[int]:
@@ -98,6 +111,20 @@ def _get_chat_members(chat_id: int) -> List[int]:
         conn.close()
 
 
+def _get_online_users_in_chat(chat_id: int) -> List[int]:
+    """
+    Возвращает список ID пользователей, которые сейчас онлайн в данном чате.
+
+    Args:
+        chat_id: ID чата
+
+    Returns:
+        Список ID онлайн-пользователей
+    """
+    members = _get_chat_members(chat_id)
+    return [user_id for user_id in members if user_id in online_users and len(online_users[user_id]) > 0]
+
+
 async def _notify_users(chat_id: int, message: dict) -> None:
     """Рассылает сообщение всем активным участникам чата."""
     members = _get_chat_members(chat_id)
@@ -105,6 +132,48 @@ async def _notify_users(chat_id: int, message: dict) -> None:
         ws = active_connections.get(chat_id, {}).get(user_id)
         if ws:
             await ws.send_json(message)
+
+
+async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
+    """
+    Рассылает уведомление об изменении статуса пользователя во все его чаты.
+
+    Args:
+        user_id: ID пользователя
+        status: "online" или "offline"
+    """
+    # Находим все чаты, где состоит пользователь
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Личные чаты
+        cur.execute("""
+            SELECT id FROM chats
+            WHERE type = 'private' AND (user1_id = %s OR user2_id = %s)
+        """, (user_id, user_id))
+        private_chats = [row[0] for row in cur.fetchall()]
+        
+        # Групповые чаты
+        cur.execute("""
+            SELECT c.id FROM chats c
+            JOIN chat_members cm ON c.id = cm.chat_id
+            WHERE c.type = 'group' AND cm.user_id = %s
+        """, (user_id,))
+        group_chats = [row[0] for row in cur.fetchall()]
+        
+        all_chats = private_chats + group_chats
+    finally:
+        cur.close()
+        conn.close()
+    
+    # Отправляем уведомление во все чаты
+    for chat_id in all_chats:
+        await _notify_users(chat_id, {
+            "type": "status",
+            "user_id": user_id,
+            "status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
 
 async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_type: str) -> None:
@@ -175,20 +244,17 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
 
     await websocket.accept()
 
+    # Добавляем пользователя в онлайн
+    if user_id not in online_users:
+        online_users[user_id] = set()
+    online_users[user_id].add(chat_id)
+
     if chat_id not in active_connections:
         active_connections[chat_id] = {}
     active_connections[chat_id][user_id] = websocket
 
-    # Уведомление о входе
-    await _notify_users(
-        chat_id,
-        {
-            "type": "status",
-            "user_id": user_id,
-            "status": "online",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        },
-    )
+    # Уведомление о входе (онлайн) - рассылаем во ВСЕ чаты пользователя
+    await _broadcast_status_to_all_chats(user_id, "online")
 
     try:
         while True:
@@ -241,16 +307,17 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
     except WebSocketDisconnect:
         pass
     finally:
+        # Удаляем соединение
         active_connections.get(chat_id, {}).pop(user_id, None)
-        await _notify_users(
-            chat_id,
-            {
-                "type": "status",
-                "user_id": user_id,
-                "status": "offline",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
-        )
+        
+        # Удаляем чат из списка активных чатов пользователя
+        if user_id in online_users:
+            online_users[user_id].discard(chat_id)
+            # Если у пользователя больше нет активных чатов, удаляем его из онлайн
+            if len(online_users[user_id]) == 0:
+                del online_users[user_id]
+                # Уведомляем об оффлайне только если пользователь полностью оффлайн
+                await _broadcast_status_to_all_chats(user_id, "offline")
 
 # === HTTP-маршруты ===
 @router.post("/chats/private", summary="Создать личный чат")
@@ -356,10 +423,19 @@ def invite_user_to_chat(
     current_user_id: int = Depends(get_current_user_from_header),
 ):
     """
-    Приглашает пользователя в групповой чат.
+    Приглашает пользователя в групповой чат по email или username.
     Доступно только владельцу чата.
     """
-    if not add_user_to_group_chat(chat_id, request.user_id, current_user_id):
+    from app.models.user import get_user_by_email_or_username
+    
+    # Находим пользователя по email или username
+    user_data = get_user_by_email_or_username(request.user_email_or_username)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    invited_user_id = user_data[0]
+    
+    if not add_user_to_group_chat(chat_id, invited_user_id, current_user_id):
         raise HTTPException(status_code=403, detail="Недостаточно прав или чат не найден")
     return {"status": "success"}
 
@@ -401,6 +477,22 @@ def get_users_list(
     return {"users": users}
 
 
+@router.get("/users/search", summary="Поиск пользователей")
+def search_users_endpoint(
+    q: str,
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Ищет пользователей по имени или email.
+    Требует параметр поиска 'q'.
+    """
+    if not q or len(q.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Введите строку поиска")
+    
+    users = search_users(query=q.strip(), exclude_user_id=current_user_id)
+    return {"users": users}
+
+
 @router.post("/chats/private/with-user", summary="Создать личный чат с пользователем")
 def create_private_chat_with_user(
     user2_id: int,
@@ -415,3 +507,28 @@ def create_private_chat_with_user(
     
     chat_id = create_private_chat(current_user_id, user2_id)
     return {"chat_id": chat_id}
+
+
+@router.get("/users/status", summary="Получить статусы пользователей (онлайн/оффлайн)")
+def get_users_status(
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Возвращает словарь {user_id: True/False} для всех пользователей в чатах текущего пользователя.
+    True = онлайн, False = оффлайн.
+    """
+    # Получаем все чаты пользователя
+    user_chats = get_user_chats(current_user_id)
+    
+    # Собираем всех уникальных пользователей из этих чатов
+    all_user_ids = set()
+    for chat in user_chats:
+        members = _get_chat_members(chat["chat_id"])
+        all_user_ids.update(members)
+    
+    # Исключаем текущего пользователя
+    all_user_ids.discard(current_user_id)
+    
+    # Формируем результат
+    status = {user_id: user_id in online_users for user_id in all_user_ids}
+    return {"online_status": status}

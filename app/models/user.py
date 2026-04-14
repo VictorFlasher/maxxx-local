@@ -1,8 +1,16 @@
 """
 Модуль для работы с пользователями: регистрация, аутентификация, проверка прав.
 Работает с таблицей users в схеме "maxxx-local".
+
+Функции модуля:
+- Регистрация новых пользователей с хешированием паролей
+- Аутентификация по email
+- Поиск пользователей по username/email
+- Проверка административных прав и банов
+- Управление статусом пользователей
 """
 
+import re
 import bcrypt
 import psycopg2
 from typing import Optional, Tuple, List
@@ -15,12 +23,20 @@ def create_user(username: str, email: str, password: str) -> None:
 
     Args:
         username: уникальное имя пользователя
-        email: уникальный email
+        email: уникальный email (должен содержать @ и домен)
         password: пароль в открытом виде (будет захеширован)
 
     Raises:
-        ValueError: если пользователь с таким email или username уже существует
+        ValueError: если пользователь с таким email или username уже существует, 
+                    или email некорректен
     """
+    # Проверка формата email
+    import re
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        raise ValueError("Некорректный формат email")
+    
+    email = email.lower()  # Приводим к нижнему регистру
+    
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     conn = get_db_connection()
     cur = conn.cursor()
@@ -57,6 +73,30 @@ def get_user_by_email(email: str) -> Optional[Tuple[int, str, str]]:
         cur.execute(
             "SELECT id, email, password_hash FROM users WHERE email = %s",
             (email,),
+        )
+        return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_email_or_username(email_or_username: str) -> Optional[Tuple[int, str, str]]:
+    """
+    Возвращает данные пользователя по email или username.
+
+    Args:
+        email_or_username: email или username пользователя
+
+    Returns:
+        Кортеж (id, email, username) или None, если не найден
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT id, email, username FROM users 
+               WHERE email = %s OR username = %s""",
+            (email_or_username, email_or_username),
         )
         return cur.fetchone()
     finally:
@@ -177,6 +217,48 @@ def get_all_users(exclude_user_id: Optional[int] = None) -> List[dict]:
                 FROM users
                 ORDER BY username
             """)
+        
+        rows = cur.fetchall()
+        return [
+            {"id": row[0], "username": row[1], "email": row[2]}
+            for row in rows
+        ]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def search_users(query: str, exclude_user_id: Optional[int] = None) -> List[dict]:
+    """
+    Ищет пользователей по имени или email.
+    
+    Args:
+        query: Строка поиска
+        exclude_user_id: ID пользователя, которого нужно исключить из результатов
+        
+    Returns:
+        Список словарей с информацией о найденных пользователях
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        search_pattern = f"%{query}%"
+        
+        if exclude_user_id:
+            cur.execute("""
+                SELECT id, username, email
+                FROM users
+                WHERE (username ILIKE %s OR email ILIKE %s)
+                  AND id != %s
+                ORDER BY username
+            """, (search_pattern, search_pattern, exclude_user_id))
+        else:
+            cur.execute("""
+                SELECT id, username, email
+                FROM users
+                WHERE username ILIKE %s OR email ILIKE %s
+                ORDER BY username
+            """, (search_pattern, search_pattern))
         
         rows = cur.fetchall()
         return [

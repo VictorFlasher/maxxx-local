@@ -1,5 +1,11 @@
 """
-Маршруты аутентификации: регистрация, вход, извлечение пользователя из токена.
+Модуль аутентификации: регистрация, вход, извлечение пользователя из токена.
+
+Функции модуля:
+- Регистрация новых пользователей с валидацией email
+- Аутентификация и выдача JWT-токенов
+- Проверка валидности токенов и статуса пользователей
+- Вспомогательные функции для WebSocket аутентификации
 """
 
 import re
@@ -11,15 +17,15 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt
 from pydantic import BaseModel, field_validator
 
-from ..models.user import create_user, get_user_by_email
-from ..models.user import get_user_by_id
+from ..models.user import create_user, get_user_by_email, get_user_by_id
 import bcrypt
 import os
 
 # === Конфигурация JWT ===
+# Секретный ключ для подписи JWT-токенов (в production использовать переменную окружения)
 SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Время жизни токена в минутах
 
 # === FastAPI компоненты ===
 router = APIRouter()
@@ -27,6 +33,7 @@ oauth2_scheme = HTTPBearer()
 
 
 # === Модели запросов ===
+
 class UserRegister(BaseModel):
     """Данные для регистрации нового пользователя."""
     username: str
@@ -36,7 +43,18 @@ class UserRegister(BaseModel):
     @field_validator('email')
     @classmethod
     def validate_email_format(cls, v):
-        """Проверяет формат email."""
+        """
+        Проверяет формат email.
+        
+        Args:
+            v: строка email
+            
+        Returns:
+            email в нижнем регистре
+            
+        Raises:
+            ValueError: если формат email некорректен
+        """
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
             raise ValueError('Некорректный формат email')
         return v.lower()

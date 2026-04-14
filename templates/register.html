@@ -116,7 +116,17 @@
                     }, 2000);
                 } else {
                     const error = await response.json();
-                    errorDiv.textContent = error.detail || 'Ошибка регистрации';
+                    // Обрабатываем разные форматы ошибок
+                    if (error.detail && typeof error.detail === 'string') {
+                        errorDiv.textContent = error.detail;
+                    } else if (error.detail && Array.isArray(error.detail)) {
+                        // Ошибки валидации Pydantic
+                        errorDiv.textContent = error.detail.map(d => d.msg).join(', ');
+                    } else if (typeof error === 'object') {
+                        errorDiv.textContent = 'Ошибка регистрации: проверьте правильность данных';
+                    } else {
+                        errorDiv.textContent = error || 'Ошибка регистрации';
+                    }
                     errorDiv.style.display = 'block';
                 }
             } catch (err) {

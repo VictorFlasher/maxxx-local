@@ -38,3 +38,9 @@ async def register_page(request: Request):
 @app.get("/chat")
 async def chat_page(request: Request):
     return templates.TemplateResponse("chat.html", {"request": request})
+
+
+@app.get("/search-users")
+async def search_users_page(request: Request):
+    """Страница поиска пользователей."""
+    return templates.TemplateResponse("search_users.html", {"request": request})
