@@ -564,3 +564,150 @@ def get_users_status(
     # Формируем результат
     status = {user_id: user_id in online_users for user_id in all_user_ids}
     return {"online_status": status}
+
+
+# === Маршруты для управления сообщениями (редактирование, удаление, жалобы) ===
+
+@router.put("/messages/{message_id}", summary="Редактировать сообщение")
+def edit_message(
+    message_id: int,
+    request: dict,
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Редактирует текст сообщения.
+    Можно редактировать только свои текстовые сообщения (не файлы).
+    """
+    text = request.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Сообщение не может быть пустым")
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Проверяем, существует ли сообщение и принадлежит ли оно пользователю
+        cur.execute(
+            """
+            SELECT sender_id, file_path FROM messages WHERE message_id = %s
+            """,
+            (message_id,)
+        )
+        row = cur.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        
+        sender_id, file_path = row
+        
+        if file_path:
+            raise HTTPException(status_code=400, detail="Нельзя редактировать файлы")
+        
+        if sender_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Можно редактировать только свои сообщения")
+        
+        # Обновляем сообщение
+        cur.execute(
+            """
+            UPDATE messages 
+            SET text = %s, edited_at = %s 
+            WHERE message_id = %s
+            """,
+            (text, datetime.now(timezone.utc), message_id)
+        )
+        conn.commit()
+        
+        return {"message": "Сообщение отредактировано"}
+    except HTTPException:
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.delete("/messages/{message_id}", summary="Удалить сообщение")
+def delete_message(
+    message_id: int,
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Удаляет сообщение.
+    Можно удалить только своё сообщение или если пользователь - администратор.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Проверяем, существует ли сообщение и является ли пользователь админом или владельцем
+        cur.execute(
+            """
+            SELECT sender_id FROM messages WHERE message_id = %s
+            """,
+            (message_id,)
+        )
+        row = cur.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        
+        sender_id = row[0]
+        
+        # Проверяем права (владелец или админ)
+        cur.execute("SELECT is_admin FROM users WHERE user_id = %s", (current_user_id,))
+        is_admin = cur.fetchone()[0]
+        
+        if sender_id != current_user_id and not is_admin:
+            raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
+        
+        # Удаляем сообщение
+        cur.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
+        conn.commit()
+        
+        return {"message": "Сообщение удалено"}
+    except HTTPException:
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+class ReportMessageRequest(BaseModel):
+    """Запрос на жалобу к сообщению."""
+    message_id: int
+    reason: str
+
+
+@router.post("/messages/report", summary="Пожаловаться на сообщение")
+def report_message(
+    request: ReportMessageRequest,
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Создаёт жалобу на сообщение.
+    Жалоба сохраняется в БД для последующей модерации.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Проверяем, существует ли сообщение
+        cur.execute(
+            "SELECT message_id FROM messages WHERE message_id = %s",
+            (request.message_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        
+        # Сохраняем жалобу
+        cur.execute(
+            """
+            INSERT INTO message_reports (message_id, reporter_id, reason, created_at)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (request.message_id, current_user_id, request.reason, datetime.now(timezone.utc))
+        )
+        conn.commit()
+        
+        return {"message": "Жалоба отправлена"}
+    except HTTPException:
+        raise
+    finally:
+        cur.close()
+        conn.close()
