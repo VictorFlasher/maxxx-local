@@ -5,7 +5,7 @@
 
 import bcrypt
 import psycopg2
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from ..database import get_db_connection
 
 
@@ -146,6 +146,43 @@ def get_username(user_id: int) -> str:
         cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
         return row[0] if row else f"Пользователь {user_id}"
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_all_users(exclude_user_id: Optional[int] = None) -> List[dict]:
+    """
+    Возвращает список всех пользователей (кроме текущего).
+    
+    Args:
+        exclude_user_id: ID пользователя, которого нужно исключить из списка
+        
+    Returns:
+        Список словарей с информацией о пользователях
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if exclude_user_id:
+            cur.execute("""
+                SELECT id, username, email
+                FROM users
+                WHERE id != %s
+                ORDER BY username
+            """, (exclude_user_id,))
+        else:
+            cur.execute("""
+                SELECT id, username, email
+                FROM users
+                ORDER BY username
+            """)
+        
+        rows = cur.fetchall()
+        return [
+            {"id": row[0], "username": row[1], "email": row[2]}
+            for row in rows
+        ]
     finally:
         cur.close()
         conn.close()

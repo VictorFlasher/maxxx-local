@@ -21,8 +21,36 @@
             background: #00a884;
             color: white;
             padding: 1rem;
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             font-weight: bold;
+        }
+        .header span {
+            flex: 1;
+            text-align: center;
+        }
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: normal;
+            transition: all 0.3s ease;
+        }
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        .logout-btn svg {
+            width: 18px;
+            height: 18px;
         }
         .container {
             display: flex;
@@ -108,6 +136,94 @@
             color: #888;
             font-size: 1.2rem;
         }
+        .new-chat-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: calc(100% - 32px);
+            margin: 16px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        .new-chat-btn:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+        }
+        .users-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .users-modal.visible {
+            display: flex;
+        }
+        .users-modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .users-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .users-modal-header h3 {
+            margin: 0;
+        }
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #888;
+        }
+        .close-modal:hover {
+            color: #333;
+        }
+        .user-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .user-item:hover {
+            background: #f5f5f5;
+        }
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        .create-chat-btn {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .create-chat-btn:hover {
+            background: #1565c0;
+        }
         .file-input {
             display: none;
         }
@@ -119,19 +235,70 @@
             cursor: pointer;
             margin-right: 10px;
         }
+        .chat-actions {
+            padding: 10px 16px;
+            border-bottom: 1px solid #eee;
+            display: none;
+        }
+        .chat-actions.visible {
+            display: block;
+        }
+        .leave-btn {
+            background: #ff5252;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .leave-btn:hover {
+            background: #ff1744;
+        }
     </style>
 </head>
 <body>
-    <div class="header">Maxxx-Chat</div>
-    <button onclick="logout()" style="background: #8cff8e; align-self: flex-end; font-size: 20px; border-radius: 5px; margin: 5px;"> Выйти</button>
-    <script> function logout() {
-        localStorage.removeItem('access_token');
-        window.location.href = '/';}
+    <div class="header">
+        <span>Maxxx-Chat</span>
+        <button class="logout-btn" onclick="logout()" title="Выйти из аккаунта">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Выйти
+        </button>
+    </div>
+    <script>
+        function logout() {
+            localStorage.removeItem('access_token');
+            window.location.href = '/';
+        }
     </script>
     <div class="container">
         <div class="sidebar">
+            <button class="new-chat-btn" onclick="openUsersModal()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Новый чат
+            </button>
             <ul class="chat-list" id="chatList"></ul>
-
+            <div class="chat-actions" id="chatActions">
+                <button class="leave-btn" onclick="leaveChat()">Покинуть чат</button>
+            </div>
+        </div>
+        
+        <!-- Модальное окно для выбора пользователя -->
+        <div class="users-modal" id="usersModal">
+            <div class="users-modal-content">
+                <div class="users-modal-header">
+                    <h3>Выберите пользователя</h3>
+                    <button class="close-modal" onclick="closeUsersModal()">&times;</button>
+                </div>
+                <div id="usersList">Загрузка...</div>
+            </div>
         </div>
         <div class="chat-area">
             <div class="messages" id="messages">
@@ -154,6 +321,8 @@
         }
 
         // Загружаем список чатов
+        let allChats = [];
+
         async function loadChats() {
             try {
                 const response = await fetch('/api/chats/me', {
@@ -162,19 +331,57 @@
                 const data = await response.json();
                 const chatList = document.getElementById('chatList');
                 chatList.innerHTML = '';
+                allChats = data.chats;
 
-                data.chats.forEach(chat => {
+                allChats.forEach(chat => {
                     const li = document.createElement('li');
-				li.className = 'chat-item';
-				li.dataset.chatId = chat.chat_id; // ← добавили data-атрибут
-				li.textContent = chat.name;
-				li.onclick = () => openChat(chat.chat_id);
+                    li.className = 'chat-item';
+                    li.dataset.chatId = chat.chat_id;
+                    li.textContent = chat.name;
+                    li.onclick = () => openChat(chat.chat_id);
                     chatList.appendChild(li);
                 });
             } catch (err) {
                 console.error('Ошибка загрузки чатов:', err);
             }
         }
+
+        // Функция выхода из группового чата
+        async function leaveChat() {
+            if (!currentChatId) {
+                alert('Чат не выбран');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/chats/${currentChatId}/leave`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    alert('Вы покинули чат');
+                    // Закрываем WebSocket соединение для этого чата
+                    if (wsConnections[currentChatId]) {
+                        wsConnections[currentChatId].close();
+                        delete wsConnections[currentChatId];
+                    }
+                    // Перезагружаем список чатов и очищаем текущий чат
+                    await loadChats();
+                    document.getElementById('messages').innerHTML = '<div class="empty-chat">Выберите чат</div>';
+                    currentChatId = null;
+                    currentChatType = null;
+                    document.getElementById('chatActions').classList.remove('visible');
+                } else {
+                    const errorData = await response.json();
+                    alert(`Ошибка: ${errorData.detail || 'Не удалось покинуть чат'}`);
+                }
+            } catch (err) {
+                console.error('Ошибка при выходе из чата:', err);
+                alert('Не удалось покинуть чат');
+            }
+        }
+
 
         function getCurrentUserId() {
             // Извлекаем user_id из токена (без проверки подписи)
@@ -187,11 +394,43 @@
         }
 
         let currentChatType = null;
+        let currentChatName = null;
+        
+        // Хранилище активных WebSocket соединений по chat_id
+        const wsConnections = {};
+
         async function openChat(chatId) {
+            // Закрываем предыдущее WebSocket соединение для этого чата если оно есть
+            if (wsConnections[chatId]) {
+                console.log(`Закрытие существующего соединения для чата ${chatId}`);
+                wsConnections[chatId].close();
+                delete wsConnections[chatId];
+            }
+            
+            // Также закрываем соединение для предыдущего чата если он был
+            if (currentChatId && currentChatId !== chatId && wsConnections[currentChatId]) {
+                console.log(`Закрытие соединения для предыдущего чата ${currentChatId}`);
+                wsConnections[currentChatId].close();
+                delete wsConnections[currentChatId];
+            }
+            
             currentChatId = chatId;
             document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
             const clickedItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
             if (clickedItem) clickedItem.classList.add('active');
+
+            // Получаем информацию о чате для отображения кнопки выхода
+            const chatInfo = allChats.find(c => c.chat_id === chatId);
+            currentChatType = chatInfo ? chatInfo.type : 'private';
+            currentChatName = chatInfo ? chatInfo.name : '';
+
+            // Показываем/скрываем кнопку выхода
+            const chatActions = document.getElementById('chatActions');
+            if (currentChatType === 'group') {
+                chatActions.classList.add('visible');
+            } else {
+                chatActions.classList.remove('visible');
+            }
 
             try {
                 // Загружаем историю
@@ -201,12 +440,12 @@
                 const data = await response.json();
                 displayMessages(data.messages);
 
-                // Получаем тип чата
-                currentChatType = data.messages.length > 0
-                    ? data.messages[0].chat_type
-                    : 'private';
+                // Получаем тип чата из сообщений, если не получили выше
+                if (!currentChatType && data.messages.length > 0) {
+                    currentChatType = data.messages[0].chat_type;
+                }
 
-                // Подключаемся к WebSocket
+                // Подключаемся к WebSocket и сохраняем соединение
                 connectWebSocket(chatId);
             } catch (err) {
                 console.error('Ошибка при открытии чата:', err);
@@ -254,18 +493,25 @@
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-        let ws = null;
-
         function connectWebSocket(chatId) {
-            // Закрываем предыдущее соединение
-            if (ws) {
-                ws.close();
-            }
+            // Создаём новое WebSocket соединение
+            const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`);
 
-            ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`);
-
-            ws.onopen = () => console.log('WS подключён');
-            ws.onerror = (err) => console.error('WS ошибка:', err);
+            ws.onopen = () => {
+                console.log(`WS подключён к чату ${chatId}`);
+            };
+            
+            ws.onclose = () => {
+                console.log(`WS отключён от чата ${chatId}`);
+                // Удаляем соединение из хранилища при закрытии
+                if (wsConnections[chatId]) {
+                    delete wsConnections[chatId];
+                }
+            };
+            
+            ws.onerror = (err) => {
+                console.error(`WS ошибка в чате ${chatId}:`, err);
+            };
 
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
@@ -300,6 +546,9 @@
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 }
             };
+            
+            // Сохраняем соединение в хранилище
+            wsConnections[chatId] = ws;
         }
         async function sendMessage() {
             if (!currentChatId) return;
@@ -307,7 +556,8 @@
             const text = input.value.trim();
             if (!text) return;
 
-            // Отправляем через WebSocket
+            // Отправляем через WebSocket для текущего чата
+            const ws = wsConnections[currentChatId];
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ text }));
                 input.value = '';
@@ -351,6 +601,82 @@
                 alert('Не удалось загрузить файл');
             }
             e.target.value = '';
+        });
+
+        // Функции для работы с модальным окном пользователей
+        async function openUsersModal() {
+            const modal = document.getElementById('usersModal');
+            const usersListDiv = document.getElementById('usersList');
+            
+            try {
+                const response = await fetch('/api/users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Ошибка загрузки пользователей');
+                }
+                
+                const data = await response.json();
+                usersListDiv.innerHTML = '';
+                
+                if (data.users.length === 0) {
+                    usersListDiv.innerHTML = '<div style="padding: 12px; color: #888;">Нет других пользователей</div>';
+                } else {
+                    data.users.forEach(user => {
+                        const userDiv = document.createElement('div');
+                        userDiv.className = 'user-item';
+                        userDiv.innerHTML = `
+                            <div>
+                                <strong>${user.username}</strong><br>
+                                <small style="color: #888;">${user.email}</small>
+                            </div>
+                            <button class="create-chat-btn" onclick="createChatWithUser(${user.id})">Создать чат</button>
+                        `;
+                        usersListDiv.appendChild(userDiv);
+                    });
+                }
+                
+                modal.classList.add('visible');
+            } catch (err) {
+                console.error('Ошибка:', err);
+                usersListDiv.innerHTML = '<div style="padding: 12px; color: red;">Ошибка загрузки пользователей</div>';
+                modal.classList.add('visible');
+            }
+        }
+        
+        function closeUsersModal() {
+            document.getElementById('usersModal').classList.remove('visible');
+        }
+        
+        async function createChatWithUser(userId) {
+            try {
+                const response = await fetch(`/api/chats/private/with-user?user2_id=${userId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    closeUsersModal();
+                    // Перезагружаем список чатов и открываем новый чат
+                    await loadChats();
+                    openChat(data.chat_id);
+                } else {
+                    const errorData = await response.json();
+                    alert(`Ошибка: ${errorData.detail || 'Не удалось создать чат'}`);
+                }
+            } catch (err) {
+                console.error('Ошибка:', err);
+                alert('Не удалось создать чат');
+            }
+        }
+        
+        // Закрытие модального окна при клике вне его области
+        document.getElementById('usersModal').addEventListener('click', (e) => {
+            if (e.target.id === 'usersModal') {
+                closeUsersModal();
+            }
         });
 
         // Загружаем чаты при старте
