@@ -1,11 +1,53 @@
 """
 Модуль для работы с чатами: создание, проверка участия, получение истории.
 Использует единую таблицу 'chats' для всех типов чатов.
+
+Функции модуля:
+- Создание личных и групповых чатов
+- Проверка участия пользователя в чате
+- Получение истории сообщений
+- Управление участниками групповых чатов
+- Удаление чатов
 """
+
 import os
 from typing import List, Dict, Any, Optional
 import psycopg2
 from ..database import get_db_connection
+
+
+def _get_chat_members(chat_id: int) -> List[int]:
+    """
+    Возвращает список ID всех участников чата (личного или группового).
+    
+    Эта функция используется внутри модуля routes для получения списка участников.
+    
+    Args:
+        chat_id: ID чата
+        
+    Returns:
+        Список ID участников чата
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT type, user1_id, user2_id FROM chats WHERE id = %s", (chat_id,))
+        row = cur.fetchone()
+        if not row:
+            return []
+        
+        chat_type, user1, user2 = row
+        
+        if chat_type == 'private':
+            return [user1, user2]
+        elif chat_type == 'group':
+            cur.execute("SELECT user_id FROM chat_members WHERE chat_id = %s", (chat_id,))
+            return [r[0] for r in cur.fetchall()]
+        else:
+            return []
+    finally:
+        cur.close()
+        conn.close()
 
 def create_private_chat(user1_id: int, user2_id: int) -> int:
     """
@@ -202,13 +244,16 @@ def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
             # Определяем, кто "другой" пользователь
             if user1_id == user_id:
                 other_name = user2_name
+                other_id = user2_id
             else:
                 other_name = user1_name
+                other_id = user1_id
 
             chats.append({
                 "chat_id": chat_id,
                 "type": "private",
-                "name": f"Чат с {other_name}"
+                "name": f"Чат с {other_name}",
+                "other_user_id": other_id
             })
 
         # Групповые чаты (без изменений)
@@ -320,6 +365,33 @@ def get_chat_type(chat_id: int) -> str:
         cur.execute("SELECT type FROM chats WHERE id = %s", (chat_id,))
         row = cur.fetchone()
         return row[0] if row else None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def log_connection_event(user_id: int, event_type: str) -> None:
+    """
+    Логирует событие подключения или отключения пользователя.
+    
+    Args:
+        user_id: ID пользователя
+        event_type: Тип события ('login', 'logout', 'websocket_connect', 'websocket_disconnect')
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO connection_logs (user_id, event_type, timestamp)
+            VALUES (%s, %s, NOW())
+        """, (user_id, event_type))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        # Не выбрасываем ошибку, чтобы не ломать основной функционал
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка логирования события подключения: {e}")
     finally:
         cur.close()
         conn.close()

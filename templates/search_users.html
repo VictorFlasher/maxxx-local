@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск пользователей - Maxxx-Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #00a884;
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+        .back-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        .container {
+            max-width: 600px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 2rem;
+            width: 90%;
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .search-box button {
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        .search-box button:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+        }
+        .users-list {
+            list-style: none;
+        }
+        .user-item {
+            padding: 16px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+        }
+        .user-item:hover {
+            background: #f5f5f5;
+        }
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .user-email {
+            color: #888;
+            font-size: 14px;
+        }
+        .create-chat-btn {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .create-chat-btn:hover {
+            background: #1565c0;
+            transform: translateY(-1px);
+        }
+        .no-results {
+            text-align: center;
+            color: #888;
+            padding: 2rem;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span>Поиск пользователей</span>
+        <button class="back-btn" onclick="goBack()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Назад
+        </button>
+    </div>
+    
+    <div class="container">
+        <h2>Найти пользователя</h2>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Введите имя или email..." onkeypress="if(event.key === 'Enter') searchUsers()">
+            <button onclick="searchUsers()">Найти</button>
+        </div>
+        <ul class="users-list" id="usersList">
+            <li class="loading">Введите запрос для поиска...</li>
+        </ul>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        function goBack() {
+            window.location.href = '/chat';
+        }
+
+        async function searchUsers() {
+            const query = document.getElementById('searchInput').value.trim();
+            const usersListDiv = document.getElementById('usersList');
+            
+            if (!query) {
+                usersListDiv.innerHTML = '<li class="loading">Введите хотя бы один символ для поиска...</li>';
+                return;
+            }
+
+            usersListDiv.innerHTML = '<li class="loading">Поиск...</li>';
+
+            try {
+                const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка поиска');
+                }
+
+                const data = await response.json();
+                
+                if (data.users.length === 0) {
+                    usersListDiv.innerHTML = '<li class="no-results">Пользователи не найдены</li>';
+                    return;
+                }
+
+                usersListDiv.innerHTML = '';
+                data.users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.className = 'user-item';
+                    li.innerHTML = `
+                        <div class="user-info">
+                            <span class="user-name">${escapeHtml(user.username)}</span>
+                            <span class="user-email">${escapeHtml(user.email)}</span>
+                        </div>
+                        <button class="create-chat-btn" onclick="createChat(${user.id})">Создать чат</button>
+                    `;
+                    usersListDiv.appendChild(li);
+                });
+            } catch (err) {
+                console.error('Ошибка:', err);
+                usersListDiv.innerHTML = '<li class="no-results">Ошибка при поиске пользователей</li>';
+            }
+        }
+
+        async function createChat(userId) {
+            try {
+                const response = await fetch(`/api/chats/private/with-user?user2_id=${userId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    alert('Чат создан! Переходим к переписке...');
+                    window.location.href = `/chat?chat_id=${data.chat_id}`;
+                } else {
+                    const errorData = await response.json();
+                    alert(`Ошибка: ${errorData.detail || 'Не удалось создать чат'}`);
+                }
+            } catch (err) {
+                console.error('Ошибка:', err);
+                alert('Не удалось создать чат');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

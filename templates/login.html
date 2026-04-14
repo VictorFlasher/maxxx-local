@@ -63,7 +63,7 @@
         <input type="password" id="password" placeholder="Пароль" required>
         <button onclick="login()">Войти</button>
         <p style="text-align: center; margin-top: 1rem;">
-            Нет аккаунта? <a href="/register" onclick="register()">Зарегистрироваться</a>
+            Нет аккаунта? <a href="/register">Зарегистрироваться</a>
         </p>
     </div>
 
@@ -92,26 +92,6 @@
             } catch (err) {
                 errorDiv.textContent = 'Ошибка сети';
                 errorDiv.style.display = 'block';
-            }
-        }
-
-        function register() {
-            const email = prompt('Введите email:');
-            const username = prompt('Введите имя пользователя:');
-            const password = prompt('Введите пароль:');
-            
-            if (email && username && password) {
-                fetch('/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, username, password })
-                }).then(r => {
-                    if (r.ok) {
-                        alert('Регистрация успешна! Теперь войдите.');
-                    } else {
-                        r.json().then(e => alert('Ошибка: ' + e.detail));
-                    }
-                });
             }
         }
     </script>
