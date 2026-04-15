@@ -6,12 +6,11 @@ __pycache__/
 *.pyd
 
 # Dependencies
-.venv/
 venv/
 env/
 .env
 .env.local
-.env.*
+*.env.*
 
 # Testing
 .pytest_cache/

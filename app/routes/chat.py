@@ -26,7 +26,73 @@ from fastapi import (
     BackgroundTasks,
 )
 from pydantic import BaseModel
-import magic
+
+# Проверка типа файла по magic numbers (кроссплатформенная версия)
+# Используем простую реализацию для Windows без зависимости от libmagic
+def get_file_type(file_bytes: bytes) -> str:
+    """
+    Определяет тип файла по первым байтам (magic numbers).
+    
+    Args:
+        file_bytes: Первые байты файла (минимум 8-14 байт)
+    
+    Returns:
+        Строка с MIME-типом или 'application/octet-stream' если не определено
+    """
+    if len(file_bytes) < 4:
+        return 'application/octet-stream'
+    
+    # Проверка по сигнатурам файлов
+    if file_bytes[:4] == b'\x89PNG':
+        return 'image/png'
+    elif file_bytes[:2] == b'\xFF\xD8':
+        return 'image/jpeg'
+    elif file_bytes[:6] in [b'GIF87a', b'GIF89a']:
+        return 'image/gif'
+    elif file_bytes[:8] == b'\x89HDF\r\n\x1a\n':
+        return 'application/x-hdf'
+    elif file_bytes[:2] == b'MZ':
+        return 'application/x-msdownload'
+    elif file_bytes[:4] == b'%PDF':
+        return 'application/pdf'
+    elif file_bytes[:5] == b'%!PS-':
+        return 'application/postscript'
+    elif file_bytes[:6] == b'\xD0\xCF\x11\xE0\xA1\xB1':
+        return 'application/msword'
+    elif file_bytes[:6] == b'PK\x03\x04':
+        return 'application/zip'
+    elif file_bytes[:4] == b'RIFF' and file_bytes[8:12] == b'WAVE':
+        return 'audio/wav'
+    elif file_bytes[:4] == b'ID3' or file_bytes[:2] == b'\xFF\xFB':
+        return 'audio/mpeg'
+    elif file_bytes[:4] == b'fLaC':
+        return 'audio/flac'
+    elif file_bytes[:8] == b'ftypisom' or file_bytes[:8] == b'ftypmp42':
+        return 'video/mp4'
+    elif file_bytes[:8] == b'ftypM4V ':
+        return 'video/x-m4v'
+    elif file_bytes[:4] == b'\x00\x00\x00\x18':
+        return 'video/mp4'
+    elif file_bytes[:4] == b'ftyp':
+        return 'video/quicktime'
+    elif file_bytes[:2] == b'\x1F\x8B':
+        return 'application/gzip'
+    elif file_bytes[:3] == b'\xEF\xBB\xBF':
+        return 'text/plain'
+    elif file_bytes[:2] == b'\xFE\xFF':
+        return 'text/plain'
+    elif file_bytes[:2] == b'\xFF\xFE':
+        return 'text/plain'
+    
+    # Проверка на текстовые файлы (простая эвристика)
+    try:
+        text = file_bytes[:1024].decode('utf-8')
+        if all(c.isprintable() or c in '\n\r\t' for c in text):
+            return 'text/plain'
+    except:
+        pass
+    
+    return 'application/octet-stream'
 
 from ..database import get_db_connection
 from .auth import get_current_user, get_current_user_from_header
@@ -406,7 +472,7 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
 
     # === Валидация по magic numbers (MIME-тип) ===
     try:
-        mime_type = magic.from_buffer(contents[:1024], mime=True)
+        mime_type = get_file_type(contents[:1024])
         
         # Проверяем, что MIME-тип разрешён
         if mime_type not in ALLOWED_MIME_TYPES:
