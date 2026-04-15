@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt
 from pydantic import BaseModel, field_validator
-from slowapi import SlowApi, _rate_limit_exceeded_handler
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
@@ -30,7 +30,7 @@ import os
 
 # === Rate Limiting (ограничение частоты запросов) ===
 # Инициализация SlowAPI для защиты от brute-force атак
-limiter = SlowApi(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address)
 
 # === Конфигурация логирования ===
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ def create_access_token(data: Dict[str, Any]) -> str:
 # === Роутеры ===
 @router.post("/register", summary="Регистрация нового пользователя")
 @limiter.limit("5/minute")  # Максимум 5 регистраций в минуту с одного IP
-def register(request: Request, user: UserRegister):
+async def register(request: Request, user: UserRegister):
     """
     Создаёт нового пользователя. Пароль хешируется безопасно.
     

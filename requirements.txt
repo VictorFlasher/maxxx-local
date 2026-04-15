@@ -4,5 +4,5 @@ python-dotenv
 bcrypt
 psycopg2-binary
 python-jose[cryptography]
-jinja2python-magic
+jinja2
 slowapi

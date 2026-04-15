@@ -17,16 +17,16 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Подключаем SlowAPI к приложению
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     """Обработчик превышения лимита запросов."""
     return JSONResponse(
         status_code=429,
         content={"detail": "Слишком много запросов. Пожалуйста, попробуйте позже."},
     )
+
+# Подключаем SlowAPI к приложению
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Шаблоны
 templates = Jinja2Templates(directory="templates")
