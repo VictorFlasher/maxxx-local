@@ -461,3 +461,9 @@ DETAIL:  Ошибочная строка содержит (119, 1, websocket_dis
 2026-04-16 22:20:27 - app.routes.auth - WARNING - Неудачная попытка входа: test@gmail.com
 2026-04-16 22:20:33 - app.routes.auth - INFO - Успешный вход пользователя: test@gmail.com (ID: 2)
 2026-04-16 22:22:39 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 22:28:22 - root - INFO - Логирование инициализировано
+2026-04-16 22:28:22 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 22:28:22 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 22:28:22 - main - INFO - Приложение запущено
+2026-04-16 22:28:38 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 22:34:13 - main - INFO - Приложение остановлено
