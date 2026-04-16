@@ -1,0 +1,8 @@
+2026-04-16 07:47:55 - root - INFO - Логирование инициализировано
+2026-04-16 07:47:55 - app.database - ERROR - Ошибка инициализации пула соединений: connection to server at "localhost" (::1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+
+2026-04-16 07:48:09 - root - INFO - Логирование инициализировано
+2026-04-16 08:01:07 - root - INFO - Логирование инициализировано

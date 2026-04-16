@@ -107,10 +107,11 @@ def secure_hash_password(password: str) -> str:
     """
     password_bytes = None
     try:
-        # Преобразуем в изменяемый bytearray
+        # Преобразуем в изменяемый bytearray для безопасной очистки
         password_bytes = bytearray(password.encode('utf-8'))
-        # bcrypt требует bytes, конвертируем обратно для хеширования
-        hash_result = bcrypt.hashpw(bytes(password_bytes), bcrypt.gensalt())
+        # Конвертируем в bytes для bcrypt (требуется bytes, не bytearray)
+        password_for_hash = bytes(password_bytes)
+        hash_result = bcrypt.hashpw(password_for_hash, bcrypt.gensalt())
         return hash_result.decode('utf-8')
     finally:
         # Очищаем память от пароля
