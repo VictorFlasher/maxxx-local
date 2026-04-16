@@ -61,8 +61,9 @@ def get_db_connection():
         try:
             conn = db_pool.getconn()
             with conn.cursor() as cur:
-                # Безопасная установка search_path без использования несуществующего quoted_identifier
-                cur.execute('SET search_path TO %s', (sql.Identifier(SCHEMA_NAME).as_string(conn),))
+                # Безопасная установка search_path через экранирование имени схемы
+                schema_name_quoted = sql.Identifier(SCHEMA_NAME).string.replace('"', '""')
+                cur.execute(f'SET search_path TO "{schema_name_quoted}"')
             return conn
         except Exception as e:
             logger.error(f"Ошибка получения соединения из пула: {e}")
@@ -72,8 +73,9 @@ def get_db_connection():
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             with conn.cursor() as cur:
-                # Безопасная установка search_path без использования несуществующего quoted_identifier
-                cur.execute('SET search_path TO %s', (sql.Identifier(SCHEMA_NAME).as_string(conn),))
+                # Безопасная установка search_path через экранирование имени схемы
+                schema_name_quoted = sql.Identifier(SCHEMA_NAME).string.replace('"', '""')
+                cur.execute(f'SET search_path TO "{schema_name_quoted}"')
             return conn
         except Exception as e:
             raise RuntimeError(f"Не удалось подключиться к базе данных: {e}") from e

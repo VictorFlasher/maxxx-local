@@ -3,12 +3,10 @@
 *.pyc
 __pycache__/
 
-# Logs
-*.log
-logs/
-
 # Environment files
-.env
 .env.local
-*.env.*
+.env
+
+# Test cache
+.pytest_cache/
 ```

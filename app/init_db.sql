@@ -1,6 +1,12 @@
 -- Инициализация базы данных для Maxxx-Local Chat
 -- Этот скрипт создаёт все необходимые таблицы и индексы
 
+-- Создаём схему, если не существует
+CREATE SCHEMA IF NOT EXISTS maxxx-local;
+
+-- Устанавливаем search_path для схемы
+SET search_path TO "maxxx-local";
+
 -- Таблица пользователей
 CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
