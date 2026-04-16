@@ -709,14 +709,13 @@
             }
 
             try {
-                const response = await fetch('/api/chats/invite', {
+                const response = await fetch(`/api/chats/${currentChatId}/invite`, {
                     method: 'POST',
                     headers: { 
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ 
-                        chat_id: currentChatId,
                         user_email_or_username: emailOrUsername.trim()
                     })
                 });
