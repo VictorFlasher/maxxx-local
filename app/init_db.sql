@@ -2,10 +2,10 @@
 -- Этот скрипт создаёт все необходимые таблицы и индексы
 
 -- Создаём схему, если не существует
-CREATE SCHEMA IF NOT EXISTS maxxx-local;
+CREATE SCHEMA IF NOT EXISTS maxxx;
 
 -- Устанавливаем search_path для схемы
-SET search_path TO "maxxx-local";
+SET search_path TO "maxxx";
 
 -- Таблица пользователей
 CREATE TABLE IF NOT EXISTS users (

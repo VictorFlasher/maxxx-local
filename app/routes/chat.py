@@ -426,10 +426,10 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             cur = conn.cursor()
             try:
                 cur.execute("""
-                    SELECT id, sender_id, text, file_path, created_at 
+                    SELECT message_id, sender_id, text, file_path, created_at 
                     FROM messages 
-                    WHERE chat_id = %s AND id > %s 
-                    ORDER BY id ASC
+                    WHERE chat_id = %s AND message_id > %s 
+                    ORDER BY message_id ASC
                 """, (chat_id, last_message_id))
                 missed_messages = cur.fetchall()
                 
@@ -491,7 +491,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         """
                         INSERT INTO messages (chat_id, sender_id, text, created_at)
                         VALUES (%s, %s, %s, %s)
-                        RETURNING id
+                        RETURNING message_id
                         """,
                         (chat_id, user_id, text, datetime.now(timezone.utc)),
                     )
