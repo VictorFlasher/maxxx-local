@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS chats (
     user1_id INTEGER REFERENCES users(user_id),
     user2_id INTEGER REFERENCES users(user_id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by INTEGER REFERENCES users(user_id)
+    created_by INTEGER REFERENCES users(user_id),
+    owner_id INTEGER REFERENCES users(user_id)
 );
 
 -- Участники групповых чатов
@@ -81,4 +82,3 @@ CREATE INDEX IF NOT EXISTS idx_message_reports_status ON message_reports(status)
 CREATE INDEX IF NOT EXISTS idx_connection_logs_user_id ON connection_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-
