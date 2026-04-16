@@ -103,3 +103,21 @@ DETAIL:  Ошибочная строка содержит (21, 2, websocket_disc
 2026-04-16 18:54:17 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
 2026-04-16 18:54:17 - main - INFO - Приложение запущено
 2026-04-16 18:54:59 - main - INFO - Приложение остановлено
+2026-04-16 18:58:32 - root - INFO - Логирование инициализировано
+2026-04-16 18:58:32 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 18:58:32 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 18:58:32 - main - INFO - Приложение запущено
+2026-04-16 18:59:30 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 18:59:30 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (22, 1, login, null, null, 2026-04-16 18:59:30.881884+05).
+
+2026-04-16 19:08:36 - main - INFO - Приложение остановлено
+2026-04-16 19:17:38 - root - INFO - Логирование инициализировано
+2026-04-16 19:17:38 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 19:17:38 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 19:17:38 - main - INFO - Приложение запущено
+2026-04-16 19:17:49 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 19:17:49 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (23, 1, login, null, null, 2026-04-16 19:17:49.026164+05).
+
+2026-04-16 19:19:07 - main - INFO - Приложение остановлено

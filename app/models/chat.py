@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 def _get_chat_members(chat_id: int) -> List[int]:
     """
     Возвращает список ID всех участников чата (личного или группового).
-    
+
     Эта функция используется внутри модуля routes для получения списка участников.
-    
+
     Args:
         chat_id: ID чата
-        
+
     Returns:
         Список ID участников чата
     """
@@ -39,9 +39,9 @@ def _get_chat_members(chat_id: int) -> List[int]:
         row = cur.fetchone()
         if not row:
             return []
-        
+
         chat_type, user1, user2 = row
-        
+
         if chat_type == 'private':
             return [user1, user2]
         elif chat_type == 'group':
@@ -135,18 +135,18 @@ def create_group_chat(name: str, owner_id: int) -> int:
     cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO chats (type, name, owner_id)
-            VALUES ('group', %s, %s)
+            INSERT INTO chats (type, name, owner_id, created_by)
+            VALUES ('group', %s, %s, %s)
             RETURNING id
-        """, (name, owner_id))
+        """, (name, owner_id, owner_id))
         chat_id = cur.fetchone()[0]
-        
+
         # Добавляем владельца как первого участника
         cur.execute("""
             INSERT INTO chat_members (chat_id, user_id)
             VALUES (%s, %s)
         """, (chat_id, owner_id))
-        
+
         conn.commit()
         return chat_id
     finally:
@@ -295,9 +295,9 @@ def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Проверяем, что чат групповой и inviter — владелец
+        # Проверяем, что чат групповой и inviter — владелец/создатель
         cur.execute("""
-            SELECT owner_id FROM chats
+            SELECT COALESCE(owner_id, created_by) FROM chats
             WHERE id = %s AND type = 'group'
         """, (chat_id,))
         row = cur.fetchone()
@@ -319,19 +319,19 @@ def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
 def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> bool:
     """
     Удаляет пользователя из группового чата.
-    Может сделать владелец или сам пользователь (покинуть чат).
+    Может сделать владелец/создатель или сам пользователь (покинуть чат).
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         # Проверяем, что чат групповой
-        cur.execute("SELECT owner_id FROM chats WHERE id = %s AND type = 'group'", (chat_id,))
+        cur.execute("SELECT COALESCE(owner_id, created_by) FROM chats WHERE id = %s AND type = 'group'", (chat_id,))
         row = cur.fetchone()
         if not row:
             return False
 
         owner_id = row[0]
-        # Разрешено: владелец удаляет кого угодно, или пользователь удаляет себя
+        # Разрешено: владелец/создатель удаляет кого угодно, или пользователь удаляет себя
         if remover_id != owner_id and remover_id != user_id:
             return False
 
@@ -384,36 +384,36 @@ def get_chat_type(chat_id: int) -> str:
 def get_chat_type_cached(chat_id: int) -> Optional[str]:
     """
     Возвращает тип чата с кэшированием в Redis.
-    
+
     Args:
         chat_id: ID чата
-        
+
     Returns:
         Тип чата ('private' или 'group') или None если не найден
     """
     from ..utils.redis_manager import redis_cache_get, redis_cache_set
-    
+
     cache_key = f"chat_type:{chat_id}"
-    
+
     # Проверяем кэш
     cached = redis_cache_get(cache_key)
     if cached is not None:
         return cached
-    
+
     # Получаем из БД
     chat_type = get_chat_type(chat_id)
-    
+
     # Сохраняем в кэш
     if chat_type:
         redis_cache_set(cache_key, chat_type, ttl=600)
-    
+
     return chat_type
 
 
 def log_connection_event(user_id: int, event_type: str) -> None:
     """
     Логирует событие подключения или отключения пользователя.
-    
+
     Args:
         user_id: ID пользователя
         event_type: Тип события ('login', 'logout', 'websocket_connect', 'websocket_disconnect')
