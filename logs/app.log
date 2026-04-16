@@ -31,3 +31,66 @@ DETAIL:  Ошибочная строка содержит (2, 2, login, null, nu
 DETAIL:  Ошибочная строка содержит (3, 1, login, null, null, 2026-04-16 17:41:06.561676+05).
 
 2026-04-16 17:42:28 - main - INFO - Приложение остановлено
+2026-04-16 18:20:05 - root - INFO - Логирование инициализировано
+2026-04-16 18:20:05 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 18:20:05 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 18:20:05 - main - INFO - Приложение запущено
+2026-04-16 18:20:12 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 18:20:12 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (4, 1, login, null, null, 2026-04-16 18:20:12.065245+05).
+
+2026-04-16 18:21:02 - app.routes.auth - WARNING - Попытка входа с несуществующим email: test
+2026-04-16 18:21:08 - app.routes.auth - INFO - Успешный вход пользователя: test@gmail.com (ID: 2)
+2026-04-16 18:21:08 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (5, 2, login, null, null, 2026-04-16 18:21:08.904718+05).
+
+2026-04-16 18:25:38 - main - INFO - Приложение остановлено
+2026-04-16 18:30:30 - root - INFO - Логирование инициализировано
+2026-04-16 18:30:30 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 18:30:30 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 18:30:30 - main - INFO - Приложение запущено
+2026-04-16 18:30:35 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (6, 2, websocket_connect, null, null, 2026-04-16 18:30:35.011072+05).
+
+2026-04-16 18:30:38 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (7, 2, websocket_disconnect, null, null, 2026-04-16 18:30:38.880086+05).
+
+2026-04-16 18:30:38 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (8, 2, websocket_connect, null, null, 2026-04-16 18:30:38.890897+05).
+
+2026-04-16 18:30:40 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (9, 2, websocket_connect, null, null, 2026-04-16 18:30:40.888995+05).
+
+2026-04-16 18:30:47 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (10, 2, websocket_disconnect, null, null, 2026-04-16 18:30:47.660743+05).
+
+2026-04-16 18:30:47 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (11, 2, websocket_disconnect, null, null, 2026-04-16 18:30:47.664639+05).
+
+2026-04-16 18:30:48 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (12, 2, websocket_connect, null, null, 2026-04-16 18:30:48.839633+05).
+
+2026-04-16 18:30:49 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (13, 1, websocket_connect, null, null, 2026-04-16 18:30:49.752981+05).
+
+2026-04-16 18:30:50 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (14, 1, websocket_disconnect, null, null, 2026-04-16 18:30:50.77827+05).
+
+2026-04-16 18:30:51 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (15, 2, websocket_disconnect, null, null, 2026-04-16 18:30:51.940477+05).
+
+2026-04-16 18:31:22 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (16, 2, websocket_connect, null, null, 2026-04-16 18:31:22.242825+05).
+
+2026-04-16 18:31:33 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (17, 1, websocket_connect, null, null, 2026-04-16 18:31:33.41899+05).
+
+2026-04-16 18:31:48 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (18, 2, websocket_disconnect, null, null, 2026-04-16 18:31:48.874701+05).
+
+2026-04-16 18:31:50 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (19, 2, websocket_connect, null, null, 2026-04-16 18:31:50.966509+05).
+
+2026-04-16 18:32:20 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (20, 1, websocket_disconnect, null, null, 2026-04-16 18:32:20.299063+05).
+

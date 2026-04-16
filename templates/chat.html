@@ -597,8 +597,9 @@
                     
                     // Для личных чатов добавляем индикатор онлайн-статуса
                     let onlineIndicatorHtml = '';
+                    let isOnline = false;
                     if (chat.type === 'private' && chat.other_user_id) {
-                        const isOnline = onlineStatus[chat.other_user_id] === true;
+                        isOnline = onlineStatus[chat.other_user_id] === true;
                         const onlineClass = isOnline ? 'online' : '';
                         onlineIndicatorHtml = `<span class="user-online-indicator ${onlineClass}"></span>`;
                     }
