@@ -9,6 +9,7 @@
 """
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -26,6 +27,18 @@ from fastapi import (
     BackgroundTasks,
 )
 from pydantic import BaseModel
+
+# === Конфигурация логирования ===
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 # Проверка типа файла по magic numbers (кроссплатформенная версия)
 # Используем простую реализацию для Windows без зависимости от libmagic
@@ -94,7 +107,7 @@ def get_file_type(file_bytes: bytes) -> str:
     
     return 'application/octet-stream'
 
-from ..database import get_db_connection
+from ..database import get_db_connection, release_db_connection
 from .auth import get_current_user, get_current_user_from_header
 from ..models.chat import (
     create_private_chat,
@@ -108,14 +121,28 @@ from ..models.chat import (
     get_chat_type,
 )
 from ..models.user import get_username, get_all_users, search_users
+from ..utils.redis_manager import (
+    redis_add_connection,
+    redis_remove_connection,
+    redis_add_user_online,
+    redis_remove_user_online,
+    redis_get_user_online_chats,
+    redis_is_user_online,
+    redis_check_ws_rate_limit,
+    redis_increment_ws_limit,
+    redis_decrement_ws_limit,
+    redis_cache_set,
+    redis_cache_get,
+    get_instance_id,
+)
 
 # === Конфигурация ===
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Разрешённые расширения файлов для загрузки
 ALLOWED_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".txt", ".pdf"}
-MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024  # 2 МБ
+MAX_FILE_SIZE_BYTES = int(os.getenv("MAX_FILE_SIZE_BYTES", 2 * 1024 * 1024))  # 2 МБ по умолчанию
 
 # Соответствие MIME-типов и расширений для валидации по magic numbers
 ALLOWED_MIME_TYPES = {
@@ -126,13 +153,18 @@ ALLOWED_MIME_TYPES = {
     "application/pdf": [".pdf"],
 }
 
-# === Глобальное хранилище WebSocket-соединений ===
+# === Глобальное хранилище WebSocket-соединений (локальный кэш для текущего инстанса) ===
 # Структура: {chat_id: {user_id: websocket}}
+# ПРИМЕЧАНИЕ: Основное состояние хранится в Redis для масштабирования
 active_connections: Dict[int, Dict[int, WebSocket]] = {}
 
-# === Глобальное хранилище статусов пользователей "в сети" ===
+# === Глобальное хранилище статусов пользователей "в сети" (локальный кэш) ===
 # Структура: {user_id: set of chat_ids where user is online}
+# ПРИМЕЧАНИЕ: Основное состояние хранится в Redis
 online_users: Dict[int, Set[int]] = {}
+
+# === Уникальный ID экземпляра приложения ===
+INSTANCE_ID = os.getenv("INSTANCE_ID", f"instance-{os.getpid()}")
 
 router = APIRouter()
 
@@ -163,7 +195,7 @@ def _get_chat_members(chat_id: int) -> List[int]:
         chat_id: ID чата
 
     Returns:
-        Список ID участников
+        Список ID участников. Пустой список если чат не найден.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -171,6 +203,7 @@ def _get_chat_members(chat_id: int) -> List[int]:
         cur.execute("SELECT type, user1_id, user2_id FROM chats WHERE id = %s", (chat_id,))
         row = cur.fetchone()
         if not row:
+            # Чат не найден - возвращаем пустой список (неявное поведение)
             return []
 
         chat_type, user1, user2 = row
@@ -184,7 +217,7 @@ def _get_chat_members(chat_id: int) -> List[int]:
             return []
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def _get_online_users_in_chat(chat_id: int) -> List[int]:
@@ -203,11 +236,17 @@ def _get_online_users_in_chat(chat_id: int) -> List[int]:
 
 async def _notify_users(chat_id: int, message: dict) -> None:
     """Рассылает сообщение всем активным участникам чата."""
+    from fastapi.websockets import WebSocketState
+    
     members = _get_chat_members(chat_id)
     for user_id in members:
         ws = active_connections.get(chat_id, {}).get(user_id)
-        if ws:
-            await ws.send_json(message)
+        if ws and ws.client_state == WebSocketState.CONNECTED:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                # Соединение закрылось во время отправки
+                pass
 
 
 async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
@@ -218,6 +257,8 @@ async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
         user_id: ID пользователя
         status: "online" или "offline"
     """
+    from fastapi.websockets import WebSocketState
+    
     # Находим все чаты, где состоит пользователь
     conn = get_db_connection()
     cur = conn.cursor()
@@ -240,16 +281,24 @@ async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
         all_chats = private_chats + group_chats
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
     
-    # Отправляем уведомление во все чаты
+    # Отправляем уведомление во все чаты с проверкой состояния WebSocket
     for chat_id in all_chats:
-        await _notify_users(chat_id, {
-            "type": "status",
-            "user_id": user_id,
-            "status": status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        members = _get_chat_members(chat_id)
+        for member_id in members:
+            ws = active_connections.get(chat_id, {}).get(member_id)
+            if ws and ws.client_state == WebSocketState.CONNECTED:
+                try:
+                    await ws.send_json({
+                        "type": "status",
+                        "user_id": user_id,
+                        "status": status,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    # Соединение закрылось во время отправки
+                    pass
 
 
 async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_type: str) -> None:
@@ -276,13 +325,29 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
-    # 2. Уведомляем через WebSocket
-    chat_type = get_chat_type(chat_id)
+    # 2. Уведомляем через WebSocket с кэшированием
+    # Кэшируем тип чата
+    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    chat_type_cache_key = f"chat_type:{chat_id}"
+    chat_type_cached = await redis_cache_get(chat_type_cache_key)
+    if chat_type_cached:
+        chat_type = chat_type_cached
+    else:
+        chat_type = get_chat_type(chat_id)
+        await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+    
     sender_username = None
     if chat_type == "group":
-        sender_username = get_username(user_id)
+        # Кэшируем username
+        cache_key = f"username:{user_id}"
+        cached = await redis_cache_get(cache_key)
+        if cached:
+            sender_username = cached
+        else:
+            sender_username = get_username(user_id)
+            await redis_cache_set(cache_key, sender_username, ttl=600)
 
     await _notify_users(
         chat_id,
@@ -301,8 +366,14 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
 
 # === WebSocket-маршрут ===
 @router.websocket("/ws/{chat_id}")
-async def websocket_endpoint(websocket: WebSocket, chat_id: int):
-    """Обрабатывает WebSocket-соединение. Токен передаётся как ?token=..."""
+async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id: Optional[int] = Query(None, alias="last_message_id")):
+    """
+    Обрабатывает WebSocket-соединение. Токен передаётся как ?token=...
+    
+    Args:
+        chat_id: ID чата
+        last_message_id: (optional) ID последнего полученного сообщения для восстановления при reconnect
+    """
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4001, reason="Токен не указан")
@@ -318,16 +389,87 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
         await websocket.close(code=4003, reason="Нет доступа к чату")
         return
 
+    # === Rate Limiting: проверка лимита подключений ===
+    if not await redis_check_ws_rate_limit(user_id, max_connections=5):
+        await websocket.close(code=4004, reason="Превышен лимит подключений")
+        return
+
     await websocket.accept()
 
-    # Добавляем пользователя в онлайн
+    # === Добавляем соединение в Redis и локальный кэш ===
+    await redis_add_connection(chat_id, user_id, INSTANCE_ID)
+    await redis_increment_ws_limit(user_id)
+    
+    # Локальный кэш (для текущего инстанса)
     if user_id not in online_users:
         online_users[user_id] = set()
     online_users[user_id].add(chat_id)
-
+    
     if chat_id not in active_connections:
         active_connections[chat_id] = {}
     active_connections[chat_id][user_id] = websocket
+
+    # === Добавляем пользователя в онлайн в Redis ===
+    await redis_add_user_online(user_id, chat_id)
+
+    # Логируем событие подключения WebSocket
+    try:
+        from ..models.chat import log_connection_event
+        log_connection_event(user_id, 'websocket_connect')
+    except Exception as e:
+        logger.error(f"Ошибка логирования websocket_connect: {str(e)}")
+
+    # === Восстановление сообщений при reconnect ===
+    if last_message_id is not None:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT id, sender_id, text, file_path, created_at 
+                    FROM messages 
+                    WHERE chat_id = %s AND id > %s 
+                    ORDER BY id ASC
+                """, (chat_id, last_message_id))
+                missed_messages = cur.fetchall()
+                
+                for msg in missed_messages:
+                    msg_id, sender_id, text, file_path, created_at = msg
+                    # Кэшируем тип чата
+                    chat_type_cache_key = f"chat_type:{chat_id}"
+                    chat_type_cached = await redis_cache_get(chat_type_cache_key)
+                    if chat_type_cached:
+                        chat_type = chat_type_cached
+                    else:
+                        chat_type = get_chat_type(chat_id)
+                        await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+                    
+                    sender_username = None
+                    if chat_type == "group":
+                        # Используем кэширование
+                        cache_key = f"username:{sender_id}"
+                        cached = await redis_cache_get(cache_key)
+                        if cached:
+                            sender_username = cached
+                        else:
+                            sender_username = get_username(sender_id)
+                            await redis_cache_set(cache_key, sender_username, ttl=600)
+                    
+                    await websocket.send_json({
+                        "type": "message",
+                        "chat_id": chat_id,
+                        "sender_id": sender_id,
+                        "sender_username": sender_username,
+                        "chat_type": chat_type,
+                        "text": text,
+                        "file_path": file_path,
+                        "timestamp": created_at.isoformat() if created_at else None,
+                    })
+            finally:
+                cur.close()
+                release_db_connection(conn)
+        except Exception as e:
+            logger.error(f"Ошибка восстановления сообщений: {e}")
 
     # Уведомление о входе (онлайн) - рассылаем во ВСЕ чаты пользователя
     await _broadcast_status_to_all_chats(user_id, "online")
@@ -355,13 +497,28 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
                     conn.commit()
                 finally:
                     cur.close()
-                    conn.close()
+                    release_db_connection(conn)
 
-                # === 2. Готовим данные для рассылки ===
-                chat_type = get_chat_type(chat_id)
+                # === 2. Готовим данные для рассылки с кэшированием ===
+                # Кэшируем тип чата
+                chat_type_cache_key = f"chat_type:{chat_id}"
+                chat_type_cached = await redis_cache_get(chat_type_cache_key)
+                if chat_type_cached:
+                    chat_type = chat_type_cached
+                else:
+                    chat_type = get_chat_type(chat_id)
+                    await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+                
                 sender_username = None
                 if chat_type == "group":
-                    sender_username = get_username(user_id)
+                    # Кэшируем username
+                    cache_key = f"username:{user_id}"
+                    cached = await redis_cache_get(cache_key)
+                    if cached:
+                        sender_username = cached
+                    else:
+                        sender_username = get_username(user_id)
+                        await redis_cache_set(cache_key, sender_username, ttl=600)
 
                 # === 3. Рассылаем сообщение ===
                 await _notify_users(
@@ -383,7 +540,19 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
     except WebSocketDisconnect:
         pass
     finally:
-        # Удаляем соединение
+        # Логируем событие отключения WebSocket
+        try:
+            from ..models.chat import log_connection_event
+            log_connection_event(user_id, 'websocket_disconnect')
+        except Exception as e:
+            logger.error(f"Ошибка логирования websocket_disconnect: {str(e)}")
+        
+        # === Удаляем соединение из Redis и локального кэша ===
+        await redis_remove_connection(chat_id, user_id)
+        await redis_decrement_ws_limit(user_id)
+        await redis_remove_user_online(user_id, chat_id)
+        
+        # Локальный кэш
         active_connections.get(chat_id, {}).pop(user_id, None)
         
         # Удаляем чат из списка активных чатов пользователя
@@ -392,8 +561,11 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
             # Если у пользователя больше нет активных чатов, удаляем его из онлайн
             if len(online_users[user_id]) == 0:
                 del online_users[user_id]
-                # Уведомляем об оффлайне только если пользователь полностью оффлайн
-                await _broadcast_status_to_all_chats(user_id, "offline")
+                # Проверяем через Redis перед уведомлением об оффлайне
+                is_online = await redis_is_user_online(user_id)
+                if not is_online:
+                    # Уведомляем об оффлайне только если пользователь полностью оффлайн
+                    await _broadcast_status_to_all_chats(user_id, "offline")
 
 # === HTTP-маршруты ===
 @router.post("/chats/private", summary="Создать личный чат")
@@ -490,9 +662,15 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка проверки файла: {str(e)}")
 
-    # Сохранение
+    # Сохранение с защитой от path traversal
     safe_filename = f"{uuid.uuid4().hex}{ext_lower}"
     filepath = os.path.join(UPLOAD_DIR, safe_filename)
+    
+    # Дополнительная проверка: убеждаемся, что путь не выходит за пределы UPLOAD_DIR
+    real_upload_dir = os.path.realpath(UPLOAD_DIR)
+    real_filepath = os.path.realpath(filepath)
+    if not real_filepath.startswith(real_upload_dir):
+        raise HTTPException(status_code=400, detail="Небезопасное имя файла")
 
     with open(filepath, "wb") as f:
         f.write(contents)  # ← используем уже прочитанные данные
@@ -687,7 +865,7 @@ def edit_message(
         raise
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 @router.delete("/messages/{message_id}", summary="Удалить сообщение")
@@ -732,7 +910,7 @@ def delete_message(
         raise
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 class ReportMessageRequest(BaseModel):
@@ -776,4 +954,4 @@ def report_message(
         raise
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)

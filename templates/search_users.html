@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Поиск пользователей - Maxxx-Chat</title>
     <style>
         * {
@@ -176,12 +177,23 @@
             const query = document.getElementById('searchInput').value.trim();
             const usersListDiv = document.getElementById('usersList');
             
+            // Безопасная очистка списка
+            while (usersListDiv.firstChild) {
+                usersListDiv.removeChild(usersListDiv.firstChild);
+            }
+            
             if (!query) {
-                usersListDiv.innerHTML = '<li class="loading">Введите хотя бы один символ для поиска...</li>';
+                const li = document.createElement('li');
+                li.className = 'loading';
+                li.textContent = 'Введите хотя бы один символ для поиска...';
+                usersListDiv.appendChild(li);
                 return;
             }
 
-            usersListDiv.innerHTML = '<li class="loading">Поиск...</li>';
+            const loadingLi = document.createElement('li');
+            loadingLi.className = 'loading';
+            loadingLi.textContent = 'Поиск...';
+            usersListDiv.appendChild(loadingLi);
 
             try {
                 const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
@@ -194,27 +206,56 @@
 
                 const data = await response.json();
                 
+                // Очищаем список перед заполнением
+                while (usersListDiv.firstChild) {
+                    usersListDiv.removeChild(usersListDiv.firstChild);
+                }
+                
                 if (data.users.length === 0) {
-                    usersListDiv.innerHTML = '<li class="no-results">Пользователи не найдены</li>';
+                    const li = document.createElement('li');
+                    li.className = 'no-results';
+                    li.textContent = 'Пользователи не найдены';
+                    usersListDiv.appendChild(li);
                     return;
                 }
 
-                usersListDiv.innerHTML = '';
                 data.users.forEach(user => {
                     const li = document.createElement('li');
                     li.className = 'user-item';
-                    li.innerHTML = `
-                        <div class="user-info">
-                            <span class="user-name">${escapeHtml(user.username)}</span>
-                            <span class="user-email">${escapeHtml(user.email)}</span>
-                        </div>
-                        <button class="create-chat-btn" onclick="createChat(${user.id})">Создать чат</button>
-                    `;
+                    
+                    const userInfoDiv = document.createElement('div');
+                    userInfoDiv.className = 'user-info';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'user-name';
+                    nameSpan.textContent = user.username;
+                    userInfoDiv.appendChild(nameSpan);
+                    
+                    const emailSpan = document.createElement('span');
+                    emailSpan.className = 'user-email';
+                    emailSpan.textContent = user.email;
+                    userInfoDiv.appendChild(emailSpan);
+                    
+                    li.appendChild(userInfoDiv);
+                    
+                    const btn = document.createElement('button');
+                    btn.className = 'create-chat-btn';
+                    btn.textContent = 'Создать чат';
+                    btn.onclick = () => createChat(user.id);
+                    li.appendChild(btn);
+                    
                     usersListDiv.appendChild(li);
                 });
             } catch (err) {
                 console.error('Ошибка:', err);
-                usersListDiv.innerHTML = '<li class="no-results">Ошибка при поиске пользователей</li>';
+                // Очищаем и показываем ошибку
+                while (usersListDiv.firstChild) {
+                    usersListDiv.removeChild(usersListDiv.firstChild);
+                }
+                const li = document.createElement('li');
+                li.className = 'no-results';
+                li.textContent = 'Ошибка при поиске пользователей';
+                usersListDiv.appendChild(li);
             }
         }
 

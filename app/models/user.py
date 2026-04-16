@@ -14,7 +14,7 @@ import re
 import bcrypt
 import psycopg2
 from typing import Optional, Tuple, List
-from ..database import get_db_connection
+from ..database import get_db_connection, release_db_connection
 
 
 def create_user(username: str, email: str, password: str, secure_hash: bool = True) -> None:
@@ -65,7 +65,7 @@ def create_user(username: str, email: str, password: str, secure_hash: bool = Tr
         raise ValueError("Пользователь с таким email или username уже существует") from e
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def get_user_by_email(email: str) -> Optional[Tuple[int, str, str]]:
@@ -88,7 +88,7 @@ def get_user_by_email(email: str) -> Optional[Tuple[int, str, str]]:
         return cur.fetchone()
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def get_user_by_email_or_username(email_or_username: str) -> Optional[Tuple[int, str, str]]:
@@ -112,7 +112,7 @@ def get_user_by_email_or_username(email_or_username: str) -> Optional[Tuple[int,
         return cur.fetchone()
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def is_user_admin(user_id: int) -> bool:
@@ -128,11 +128,11 @@ def is_user_admin(user_id: int) -> bool:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-        return cur.fetchone()[0] == 'admin'
+        cur.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
+        return cur.fetchone()[0] == True
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def ban_user(target_user_id: int) -> bool:
@@ -157,7 +157,7 @@ def ban_user(target_user_id: int) -> bool:
         return updated
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def get_user_by_id(user_id: int) -> dict:
@@ -171,7 +171,7 @@ def get_user_by_id(user_id: int) -> dict:
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, username, email, role, is_banned
+            SELECT id, username, email, is_admin, is_banned
             FROM users
             WHERE id = %s
         """, (user_id,))
@@ -182,12 +182,12 @@ def get_user_by_id(user_id: int) -> dict:
             "id": row[0],
             "username": row[1],
             "email": row[2],
-            "role": row[3],
+            "is_admin": row[3],
             "is_banned": row[4]
         }
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def get_username(user_id: int) -> str:
     """Возвращает username по ID."""
@@ -199,7 +199,35 @@ def get_username(user_id: int) -> str:
         return row[0] if row else f"Пользователь {user_id}"
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
+
+
+def get_username_cached(user_id: int) -> str:
+    """
+    Возвращает username по ID с кэшированием в Redis.
+    
+    Args:
+        user_id: ID пользователя
+        
+    Returns:
+        Username или 'Пользователь {user_id}' если не найден
+    """
+    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    
+    cache_key = f"username:{user_id}"
+    
+    # Проверяем кэш
+    cached = redis_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    
+    # Получаем из БД
+    username = get_username(user_id)
+    
+    # Сохраняем в кэш
+    redis_cache_set(cache_key, username, ttl=600)
+    
+    return username
 
 
 def get_all_users(exclude_user_id: Optional[int] = None) -> List[dict]:
@@ -236,7 +264,7 @@ def get_all_users(exclude_user_id: Optional[int] = None) -> List[dict]:
         ]
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def search_users(query: str, exclude_user_id: Optional[int] = None) -> List[dict]:
@@ -278,4 +306,4 @@ def search_users(query: str, exclude_user_id: Optional[int] = None) -> List[dict
         ]
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
