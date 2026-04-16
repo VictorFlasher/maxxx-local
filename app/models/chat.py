@@ -8,12 +8,16 @@
 - Получение истории сообщений
 - Управление участниками групповых чатов
 - Удаление чатов
+- Логирование событий подключения
 """
 
+import logging
 import os
 from typing import List, Dict, Any, Optional
 import psycopg2
-from ..database import get_db_connection
+from ..database import get_db_connection, release_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _get_chat_members(chat_id: int) -> List[int]:
@@ -47,7 +51,7 @@ def _get_chat_members(chat_id: int) -> List[int]:
             return []
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def create_private_chat(user1_id: int, user2_id: int) -> int:
     """
@@ -114,7 +118,7 @@ def create_private_chat(user1_id: int, user2_id: int) -> int:
         raise ValueError("Не удалось создать чат")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def create_group_chat(name: str, owner_id: int) -> int:
     """
@@ -140,7 +144,7 @@ def create_group_chat(name: str, owner_id: int) -> int:
         return chat_id
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def is_user_in_chat(chat_id: int, user_id: int) -> bool:
     """
@@ -176,7 +180,7 @@ def is_user_in_chat(chat_id: int, user_id: int) -> bool:
             return False
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     conn = get_db_connection()
@@ -217,7 +221,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         return result
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
     """
@@ -274,7 +278,7 @@ def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
         return chats
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
     """
@@ -303,7 +307,7 @@ def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
         return True
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> bool:
     """
@@ -329,7 +333,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         return True
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def delete_private_chat(chat_id: int, user_id: int) -> bool:
     """
@@ -355,7 +359,7 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
         return True
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 def get_chat_type(chat_id: int) -> str:
     """Возвращает тип чата: 'private' или 'group'."""
@@ -367,7 +371,36 @@ def get_chat_type(chat_id: int) -> str:
         return row[0] if row else None
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
+
+
+def get_chat_type_cached(chat_id: int) -> Optional[str]:
+    """
+    Возвращает тип чата с кэшированием в Redis.
+    
+    Args:
+        chat_id: ID чата
+        
+    Returns:
+        Тип чата ('private' или 'group') или None если не найден
+    """
+    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    
+    cache_key = f"chat_type:{chat_id}"
+    
+    # Проверяем кэш
+    cached = redis_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    
+    # Получаем из БД
+    chat_type = get_chat_type(chat_id)
+    
+    # Сохраняем в кэш
+    if chat_type:
+        redis_cache_set(cache_key, chat_type, ttl=600)
+    
+    return chat_type
 
 
 def log_connection_event(user_id: int, event_type: str) -> None:
@@ -382,7 +415,7 @@ def log_connection_event(user_id: int, event_type: str) -> None:
     cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO connection_logs (user_id, event_type, timestamp)
+            INSERT INTO connection_logs (user_id, event_type, created_at)
             VALUES (%s, %s, NOW())
         """, (user_id, event_type))
         conn.commit()
@@ -394,4 +427,4 @@ def log_connection_event(user_id: int, event_type: str) -> None:
         logger.error(f"Ошибка логирования события подключения: {e}")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)

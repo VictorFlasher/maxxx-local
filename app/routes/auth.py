@@ -45,10 +45,12 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 # === Конфигурация JWT ===
-# Секретный ключ для подписи JWT-токенов (в production использовать переменную окружения)
-SECRET_KEY = os.getenv("SECRET_KEY", "mysecretkey")
+# Секретный ключ для подписи JWT-токенов (обязательно использовать переменную окружения в production)
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("Переменная окружения SECRET_KEY не установлена. Это критическая уязвимость безопасности!")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Время жизни токена в минутах
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))  # Время жизни токена в минутах
 
 # === FastAPI компоненты ===
 router = APIRouter()
@@ -218,16 +220,21 @@ def get_current_user_from_header(
 ) -> int:
     """
     Извлекает user_id из токена и проверяет:
-    - валидность токена
+    - валидность токена (включая срок действия exp)
     - существование пользователя
     - статус бана
     """
     try:
+        # jwt.decode автоматически проверяет exp и другие стандартные claims
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("user_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Неверный токен")
         user_id = int(user_id)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Срок действия токена истёк")
+    except jwt.JWTClaimsError as e:
+        raise HTTPException(status_code=401, detail=f"Ошибка claims токена: {str(e)}")
     except Exception:
         raise HTTPException(status_code=401, detail="Неверный токен")
 
@@ -246,13 +253,19 @@ def get_current_user_from_header(
 def get_current_user(token: str) -> int:
     """
     Извлекает user_id из строки токена (для WebSocket).
+    Проверяет срок действия токена и другие claims.
     Выбрасывает ValueError при ошибке — обрабатывается вручную.
     """
     try:
+        # jwt.decode автоматически проверяет exp и другие стандартные claims
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("user_id")
         if user_id is None:
             raise ValueError("Нет user_id в токене")
         return int(user_id)
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Срок действия токена истёк")
+    except jwt.JWTClaimsError as e:
+        raise ValueError(f"Ошибка claims токена: {str(e)}")
     except Exception as e:
         raise ValueError("Неверный токен") from e

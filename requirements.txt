@@ -5,5 +5,7 @@ bcrypt
 psycopg2-binary
 python-jose[cryptography]
 jinja2
-python-magic
 slowapi
+defusedxml
+redis
+aioredis

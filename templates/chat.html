@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:;">
     <title>Maxxx-Chat</title>
     <style>
         * {
@@ -569,7 +570,10 @@
                 });
                 const data = await response.json();
                 const chatList = document.getElementById('chatList');
-                chatList.innerHTML = '';
+                // Безопасная очистка списка чатов
+                while (chatList.firstChild) {
+                    chatList.removeChild(chatList.firstChild);
+                }
                 allChats = data.chats;
 
                 allChats.forEach(chat => {
@@ -588,15 +592,32 @@
                         onlineIndicatorHtml = `<span class="user-online-indicator ${onlineClass}"></span>`;
                     }
                     
-                    li.innerHTML = `
-                        <div class="chat-item-content">
-                            <div class="chat-item-info">
-                                <span>${escapeHtml(chat.name)}</span>
-                                ${onlineIndicatorHtml}
-                                ${badgeHtml}
-                            </div>
-                        </div>
-                    `;
+                    // Безопасная вставка с экранированием
+                    const chatItemContent = document.createElement('div');
+                    chatItemContent.className = 'chat-item-content';
+                    const chatItemInfo = document.createElement('div');
+                    chatItemInfo.className = 'chat-item-info';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = chat.name;
+                    chatItemInfo.appendChild(nameSpan);
+                    
+                    if (onlineIndicatorHtml) {
+                        const indicatorSpan = document.createElement('span');
+                        indicatorSpan.className = `user-online-indicator ${isOnline ? 'online' : ''}`;
+                        chatItemInfo.appendChild(indicatorSpan);
+                    }
+                    
+                    if (badgeHtml) {
+                        const badgeSpan = document.createElement('span');
+                        badgeSpan.className = 'unread-badge';
+                        badgeSpan.style.display = 'inline-block';
+                        badgeSpan.textContent = unreadCount;
+                        chatItemInfo.appendChild(badgeSpan);
+                    }
+                    
+                    chatItemContent.appendChild(chatItemInfo);
+                    li.appendChild(chatItemContent);
                     li.onclick = () => openChat(chat.chat_id);
                     chatList.appendChild(li);
                 });
@@ -632,7 +653,15 @@
                     delete unreadCounts[currentChatId];
                     // Перезагружаем список чатов и очищаем текущий чат
                     await loadChats();
-                    document.getElementById('messages').innerHTML = '<div class="empty-chat">Выберите чат</div>';
+                    const messagesDiv = document.getElementById('messages');
+                    // Безопасная очистка сообщений
+                    while (messagesDiv.firstChild) {
+                        messagesDiv.removeChild(messagesDiv.firstChild);
+                    }
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'empty-chat';
+                    emptyDiv.textContent = 'Выберите чат';
+                    messagesDiv.appendChild(emptyDiv);
                     currentChatId = null;
                     currentChatType = null;
                     document.getElementById('chatActions').classList.remove('visible');
@@ -684,6 +713,14 @@
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Функция для безопасного экранирования HTML (защита от XSS)
+        function escapeHtmlText(text) {
             if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
@@ -769,10 +806,16 @@
 
         function displayMessages(messages) {
             const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML = '';
+            // Безопасная очистка сообщений
+            while (messagesDiv.firstChild) {
+                messagesDiv.removeChild(messagesDiv.firstChild);
+            }
 
             if (messages.length === 0) {
-                messagesDiv.innerHTML = '<div class="empty-chat">Нет сообщений</div>';
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'empty-chat';
+                emptyDiv.textContent = 'Нет сообщений';
+                messagesDiv.appendChild(emptyDiv);
                 return;
             }
 
@@ -783,29 +826,41 @@
                 div.dataset.messageId = msg.message_id;
                 div.dataset.senderId = msg.sender_id;
 
-                let content = '';
-
                 // Обработка файла
                 if (msg.file_path) {
                     const ext = msg.file_type || '';
                     if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
-                        content = `<img src="${msg.file_path}" style="max-width: 200px; max-height: 200px;">`;
+                        const img = document.createElement('img');
+                        img.src = msg.file_path;
+                        img.style.maxWidth = '200px';
+                        img.style.maxHeight = '200px';
+                        div.appendChild(img);
                     } else {
-                        content = `<a href="${msg.file_path}" download>📎 Скачать файл</a>`;
+                        const link = document.createElement('a');
+                        link.href = msg.file_path;
+                        link.download = '';
+                        link.textContent = '📎 Скачать файл';
+                        div.appendChild(link);
                     }
                 }
                 // Обработка текста
                 else {
+                    const textSpan = document.createElement('span');
                     if (msg.chat_type === 'group' && msg.sender_id != myUserId) {
-                        content = `${msg.sender_username}: ${escapeHtml(msg.text)}`;
-                    } else {
-                        content = escapeHtml(msg.text);
+                        const usernameSpan = document.createElement('strong');
+                        usernameSpan.textContent = `${msg.sender_username}: `;
+                        textSpan.appendChild(usernameSpan);
                     }
+                    const messageText = document.createTextNode(msg.text || '');
+                    textSpan.appendChild(messageText);
+                    div.appendChild(textSpan);
                 }
 
                 // Добавляем время отправки
-                const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}) : '';
-                content += `<div class="message-time">${timestamp}</div>`;
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}) : '';
+                div.appendChild(timeDiv);
 
                 // Добавляем кнопки действий (редактировать, удалить, пожаловаться)
                 const canEdit = msg.sender_id == myUserId && !msg.file_path;
@@ -813,16 +868,33 @@
                 const canReport = msg.sender_id != myUserId;
                 
                 if (canEdit || canDelete || canReport) {
-                    content += `
-                        <div class="message-actions">
-                            ${canEdit ? `<button onclick="editMessage(${msg.message_id})">✏️</button>` : ''}
-                            ${canDelete ? `<button class="delete-btn" onclick="deleteMessage(${msg.message_id})">🗑️</button>` : ''}
-                            ${canReport ? `<button class="report-btn" onclick="reportMessage(${msg.message_id})">⚠️</button>` : ''}
-                        </div>
-                    `;
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'message-actions';
+                    
+                    if (canEdit) {
+                        const editBtn = document.createElement('button');
+                        editBtn.textContent = '✏️';
+                        editBtn.onclick = () => editMessage(msg.message_id);
+                        actionsDiv.appendChild(editBtn);
+                    }
+                    if (canDelete) {
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-btn';
+                        deleteBtn.textContent = '🗑️';
+                        deleteBtn.onclick = () => deleteMessage(msg.message_id);
+                        actionsDiv.appendChild(deleteBtn);
+                    }
+                    if (canReport) {
+                        const reportBtn = document.createElement('button');
+                        reportBtn.className = 'report-btn';
+                        reportBtn.textContent = '⚠️';
+                        reportBtn.onclick = () => reportMessage(msg.message_id);
+                        actionsDiv.appendChild(reportBtn);
+                    }
+                    
+                    div.appendChild(actionsDiv);
                 }
 
-                div.innerHTML = content;
                 messagesDiv.appendChild(div);
             });
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -893,25 +965,42 @@
                             if (msg.file_path) {
                                 const ext = msg.file_type || '';
                                 if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
-                                    content = `<img src="${msg.file_path}" style="max-width: 200px; max-height: 200px;">`;
+                                    const img = document.createElement('img');
+                                    img.src = msg.file_path;
+                                    img.style.maxWidth = '200px';
+                                    img.style.maxHeight = '200px';
+                                    div.appendChild(img);
                                 } else {
-                                    content = `<a href="${msg.file_path}" download>📎 Скачать файл</a>`;
+                                    const link = document.createElement('a');
+                                    link.href = msg.file_path;
+                                    link.download = '';
+                                    link.textContent = '📎 Скачать файл';
+                                    div.appendChild(link);
                                 }
                             }
-                            // Обработка текста
+                            // Обработка текста уже выполнена через textContent ниже
                             else {
-                                if (currentChatType === 'group' && msg.sender_id != myUserId) {
-                                    content = `${msg.sender_username}: ${escapeHtml(msg.text)}`;
-                                } else {
-                                    content = escapeHtml(msg.text);
-                                }
+                                // Текст будет добавлен через textNode для защиты от XSS
                             }
 
                             // Добавляем время отправки
                             const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}) : '';
-                            content += `<div class="message-time">${timestamp}</div>`;
-
-                            div.innerHTML = content;
+                            
+                            // Безопасная вставка текста через textContent (защита от XSS)
+                            if (currentChatType === 'group' && msg.sender_id != myUserId) {
+                                const senderSpan = document.createElement('strong');
+                                senderSpan.textContent = `${msg.sender_username}: `;
+                                div.appendChild(senderSpan);
+                            }
+                            const textNode = document.createTextNode(msg.text || '');
+                            div.appendChild(textNode);
+                            
+                            // Добавляем время отдельным элементом
+                            const timeDiv = document.createElement('div');
+                            timeDiv.className = 'message-time';
+                            timeDiv.textContent = timestamp;
+                            div.appendChild(timeDiv);
+                            
                             messagesDiv.appendChild(div);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
                         } else {
