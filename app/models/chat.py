@@ -567,9 +567,9 @@ def get_chat_last_message_id(chat_id: int) -> Optional[int]:
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id FROM messages
+            SELECT message_id FROM messages
             WHERE chat_id = %s
-            ORDER BY id DESC
+            ORDER BY message_id DESC
             LIMIT 1
         """, (chat_id,))
         row = cur.fetchone()

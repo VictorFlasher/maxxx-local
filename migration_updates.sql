@@ -14,6 +14,17 @@ CREATE TABLE IF NOT EXISTS message_reports (
 CREATE INDEX IF NOT EXISTS idx_reports_status ON message_reports(status);
 CREATE INDEX IF NOT EXISTS idx_reports_message ON message_reports(message_id);
 
+-- Таблица для отслеживания прочитанных сообщений
+CREATE TABLE IF NOT EXISTS last_read_messages (
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+    last_read_message_id INTEGER REFERENCES messages(message_id),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, chat_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_last_read_user_chat ON last_read_messages(user_id, chat_id);
+
 -- Добавляем флаги для мягкого удаления чатов (если их еще нет)
 -- Для личных чатов: удаляем у конкретного пользователя
 -- Для групповых: автоматическое удаление при 0 участников обрабатывается в коде
