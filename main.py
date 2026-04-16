@@ -175,8 +175,9 @@ async def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 @app.get("/chat")
-async def chat_page(request: Request):
-    return templates.TemplateResponse("chat.html", {"request": request})
+async def chat_page(request: Request, chat_id: int = None):
+    """Страница чата с опциональным параметром chat_id для открытия конкретного чата."""
+    return templates.TemplateResponse("chat.html", {"request": request, "chat_id": chat_id})
 
 
 @app.get("/search-users")

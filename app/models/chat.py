@@ -140,6 +140,13 @@ def create_group_chat(name: str, owner_id: int) -> int:
             RETURNING id
         """, (name, owner_id))
         chat_id = cur.fetchone()[0]
+        
+        # Добавляем владельца как первого участника
+        cur.execute("""
+            INSERT INTO chat_members (chat_id, user_id)
+            VALUES (%s, %s)
+        """, (chat_id, owner_id))
+        
         conn.commit()
         return chat_id
     finally:

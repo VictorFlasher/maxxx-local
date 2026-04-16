@@ -488,6 +488,10 @@
     <div class="connection-status" id="connectionStatus"></div>
 
     <script>
+        // Получаем chat_id из URL параметров, если передан
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialChatId = urlParams.get('chat_id');
+
         // Обработчик клика по label для загрузки файла (должен быть до основного кода)
         document.addEventListener('DOMContentLoaded', () => {
             const fileLabel = document.querySelector('.file-label');
@@ -496,6 +500,11 @@
                 fileLabel.addEventListener('click', () => {
                     fileInput.click();
                 });
+            }
+            
+            // Если в URL указан chat_id, очищаем его после обработки
+            if (initialChatId) {
+                window.history.replaceState({}, document.title, '/chat');
             }
         });
 
@@ -1240,13 +1249,29 @@
 
         // Загружаем чаты и статусы при старте
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                loadChats();
-                loadOnlineStatus();
+            document.addEventListener('DOMContentLoaded', async () => {
+                await loadChats();
+                await loadOnlineStatus();
+                // Если в URL был указан chat_id, открываем этот чат после загрузки списка
+                if (initialChatId) {
+                    const chatIdNum = parseInt(initialChatId);
+                    const chatExists = allChats.find(c => c.chat_id === chatIdNum);
+                    if (chatExists) {
+                        openChat(chatIdNum);
+                    }
+                }
             });
         } else {
-            loadChats();
-            loadOnlineStatus();
+            await loadChats();
+            await loadOnlineStatus();
+            // Если в URL был указан chat_id, открываем этот чат после загрузки списка
+            if (initialChatId) {
+                const chatIdNum = parseInt(initialChatId);
+                const chatExists = allChats.find(c => c.chat_id === chatIdNum);
+                if (chatExists) {
+                    openChat(chatIdNum);
+                }
+            }
         }
     </script>
 </body>
