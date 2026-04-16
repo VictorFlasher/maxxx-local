@@ -458,7 +458,7 @@
                 <button class="invite-btn" onclick="inviteUser()">Пригласить участника</button>
             </div>
         </div>
-        
+
         <div class="chat-area">
             <div class="messages" id="messages">
                 <div class="empty-chat">Выберите чат</div>
@@ -501,7 +501,7 @@
                     fileInput.click();
                 });
             }
-            
+
             // Если в URL указан chat_id, очищаем его после обработки
             if (initialChatId) {
                 window.history.replaceState({}, document.title, '/chat');
@@ -547,13 +547,13 @@
         function updateOnlineIndicator(chatId, chatItem) {
             const chat = allChats.find(c => c.chat_id === chatId);
             if (!chat || chat.type !== 'private') return;
-            
+
             // Извлекаем ID другого пользователя из названия чата "Чат с username"
             const otherUserId = getOtherUserIdFromChat(chat);
             if (!otherUserId) return;
-            
+
             const isOnline = onlineStatus[otherUserId] === true;
-            
+
             let indicator = chatItem.querySelector('.user-online-indicator');
             if (!indicator) {
                 indicator = document.createElement('span');
@@ -563,7 +563,7 @@
                     infoDiv.appendChild(indicator);
                 }
             }
-            
+
             if (isOnline) {
                 indicator.classList.add('online');
             } else {
@@ -600,10 +600,10 @@
                     const li = document.createElement('li');
                     li.className = 'chat-item';
                     li.dataset.chatId = chat.chat_id;
-                    
+
                     const unreadCount = unreadCounts[chat.chat_id] || 0;
                     const badgeHtml = unreadCount > 0 ? `<span class="unread-badge" style="display:inline-block;">${unreadCount}</span>` : '';
-                    
+
                     // Для личных чатов добавляем индикатор онлайн-статуса
                     let onlineIndicatorHtml = '';
                     let isOnline = false;
@@ -612,23 +612,23 @@
                         const onlineClass = isOnline ? 'online' : '';
                         onlineIndicatorHtml = `<span class="user-online-indicator ${onlineClass}"></span>`;
                     }
-                    
+
                     // Безопасная вставка с экранированием
                     const chatItemContent = document.createElement('div');
                     chatItemContent.className = 'chat-item-content';
                     const chatItemInfo = document.createElement('div');
                     chatItemInfo.className = 'chat-item-info';
-                    
+
                     const nameSpan = document.createElement('span');
                     nameSpan.textContent = chat.name;
                     chatItemInfo.appendChild(nameSpan);
-                    
+
                     if (onlineIndicatorHtml) {
                         const indicatorSpan = document.createElement('span');
                         indicatorSpan.className = `user-online-indicator ${isOnline ? 'online' : ''}`;
                         chatItemInfo.appendChild(indicatorSpan);
                     }
-                    
+
                     if (badgeHtml) {
                         const badgeSpan = document.createElement('span');
                         badgeSpan.className = 'unread-badge';
@@ -636,13 +636,13 @@
                         badgeSpan.textContent = unreadCount;
                         chatItemInfo.appendChild(badgeSpan);
                     }
-                    
+
                     chatItemContent.appendChild(chatItemInfo);
                     li.appendChild(chatItemContent);
                     li.onclick = () => openChat(chat.chat_id);
                     chatList.appendChild(li);
                 });
-                
+
                 // После загрузки чатов обновляем индикаторы
                 updateAllOnlineIndicators();
             } catch (err) {
@@ -709,13 +709,13 @@
             }
 
             try {
-                const response = await fetch('/api/chats/invite', {
+                const response = await fetch(`/api/chats/${currentChatId}/invite`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         chat_id: currentChatId,
                         user_email_or_username: emailOrUsername.trim()
                     })
@@ -761,7 +761,7 @@
 
         let currentChatType = null;
         let currentChatName = null;
-        
+
         // Хранилище активных WebSocket соединений по chat_id
         const wsConnections = {};
 
@@ -772,17 +772,17 @@
                 wsConnections[chatId].close();
                 delete wsConnections[chatId];
             }
-            
+
             // Также закрываем соединение для предыдущего чата если он был
             if (currentChatId && currentChatId !== chatId && wsConnections[currentChatId]) {
                 console.log(`Закрытие соединения для предыдущего чата ${currentChatId}`);
                 wsConnections[currentChatId].close();
                 delete wsConnections[currentChatId];
             }
-            
+
             // Сбрасываем счётчик непрочитанных для открываемого чата
             unreadCounts[chatId] = 0;
-            
+
             currentChatId = chatId;
             document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
             const clickedItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
@@ -816,7 +816,7 @@
 
                 // Подключаемся к WebSocket и сохраняем соединение
                 connectWebSocket(chatId);
-                
+
                 // Обновляем бейдж непрочитанных (скрываем его)
                 updateUnreadBadge(chatId);
             } catch (err) {
@@ -887,11 +887,11 @@
                 const canEdit = msg.sender_id == myUserId && !msg.file_path;
                 const canDelete = msg.sender_id == myUserId || isAdmin();
                 const canReport = msg.sender_id != myUserId;
-                
+
                 if (canEdit || canDelete || canReport) {
                     const actionsDiv = document.createElement('div');
                     actionsDiv.className = 'message-actions';
-                    
+
                     if (canEdit) {
                         const editBtn = document.createElement('button');
                         editBtn.textContent = '✏️';
@@ -912,7 +912,7 @@
                         reportBtn.onclick = () => reportMessage(msg.message_id);
                         actionsDiv.appendChild(reportBtn);
                     }
-                    
+
                     div.appendChild(actionsDiv);
                 }
 
@@ -927,11 +927,11 @@
                 wsConnections[chatId].close();
                 delete wsConnections[chatId];
             }
-            
+
             let reconnectAttempts = 0;
             const maxReconnectAttempts = 10;
             const baseDelay = 1000; // 1 секунда
-            
+
             function connect() {
                 const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`);
 
@@ -940,20 +940,20 @@
                     reconnectAttempts = 0;
                     hideConnectionStatus();
                 };
-                
+
                 ws.onclose = (event) => {
                     console.log(`WS отключён от чата ${chatId}: ${event.code}`);
                     // Удаляем соединение из хранилища при закрытии
                     if (wsConnections[chatId]) {
                         delete wsConnections[chatId];
                     }
-                    
+
                     // Автоматическое переподключение с экспоненциальной задержкой
                     if (chatId === currentChatId && reconnectAttempts < maxReconnectAttempts) {
                         reconnectAttempts++;
                         const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts), 30000);
                         showConnectionStatus('reconnecting', `Переподключение... (попытка ${reconnectAttempts}/${maxReconnectAttempts})`);
-                        
+
                         setTimeout(() => {
                             if (chatId === currentChatId) {
                                 connect();
@@ -963,7 +963,7 @@
                         showConnectionStatus('disconnected', 'Не удалось подключиться. Перезагрузите страницу.');
                     }
                 };
-                
+
                 ws.onerror = (err) => {
                     console.error(`WS ошибка в чате ${chatId}:`, err);
                 };
@@ -1006,7 +1006,7 @@
 
                             // Добавляем время отправки
                             const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}) : '';
-                            
+
                             // Безопасная вставка текста через textContent (защита от XSS)
                             if (currentChatType === 'group' && msg.sender_id != myUserId) {
                                 const senderSpan = document.createElement('strong');
@@ -1015,13 +1015,13 @@
                             }
                             const textNode = document.createTextNode(msg.text || '');
                             div.appendChild(textNode);
-                            
+
                             // Добавляем время отдельным элементом
                             const timeDiv = document.createElement('div');
                             timeDiv.className = 'message-time';
                             timeDiv.textContent = timestamp;
                             div.appendChild(timeDiv);
-                            
+
                             messagesDiv.appendChild(div);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
                         } else {
@@ -1033,20 +1033,20 @@
                         }
                     }
                 };
-                
+
                 // Сохраняем соединение в хранилище
                 wsConnections[chatId] = ws;
             }
-            
+
             connect();
         }
-        
+
         function showConnectionStatus(type, message) {
             const statusEl = document.getElementById('connectionStatus');
             statusEl.className = `connection-status ${type}`;
             statusEl.textContent = message;
         }
-        
+
         function hideConnectionStatus() {
             const statusEl = document.getElementById('connectionStatus');
             statusEl.className = 'connection-status';
@@ -1055,10 +1055,10 @@
         function updateUnreadBadge(chatId) {
             const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
             if (!chatItem) return;
-            
+
             const count = unreadCounts[chatId] || 0;
             let badge = chatItem.querySelector('.unread-badge');
-            
+
             if (count > 0) {
                 if (!badge) {
                     const infoDiv = chatItem.querySelector('.chat-item-info');
@@ -1098,44 +1098,44 @@
 
         // Модальное окно для редактирования сообщений
         let editingMessageId = null;
-        
+
         function editMessage(messageId) {
             const messageDiv = document.querySelector(`.message[data-message-id="${messageId}"]`);
             if (!messageDiv) return;
-            
+
             const textContent = messageDiv.childNodes[0]?.textContent || '';
             // Удаляем время из текста
             const text = textContent.replace(/\d{2}:\d{2}$/, '').trim();
-            
+
             editingMessageId = messageId;
             document.getElementById('editMessageText').value = text;
             document.getElementById('editModal').classList.add('visible');
         }
-        
+
         function closeEditModal() {
             document.getElementById('editModal').classList.remove('visible');
             editingMessageId = null;
         }
-        
+
         async function saveEditedMessage() {
             if (!editingMessageId) return;
-            
+
             const newText = document.getElementById('editMessageText').value.trim();
             if (!newText) {
                 alert('Сообщение не может быть пустым');
                 return;
             }
-            
+
             try {
                 const response = await fetch(`/api/messages/${editingMessageId}`, {
                     method: 'PUT',
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ text: newText })
                 });
-                
+
                 if (response.ok) {
                     // Обновляем сообщение в UI
                     const messageDiv = document.querySelector(`.message[data-message-id="${editingMessageId}"]`);
@@ -1155,16 +1155,16 @@
                 alert('Не удалось отредактировать сообщение');
             }
         }
-        
+
         async function deleteMessage(messageId) {
             if (!confirm('Вы уверены, что хотите удалить это сообщение?')) return;
-            
+
             try {
                 const response = await fetch(`/api/messages/${messageId}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                
+
                 if (response.ok) {
                     // Удаляем сообщение из UI
                     const messageDiv = document.querySelector(`.message[data-message-id="${messageId}"]`);
@@ -1180,23 +1180,23 @@
                 alert('Не удалось удалить сообщение');
             }
         }
-        
+
         async function reportMessage(messageId) {
             const reason = prompt('Укажите причину жалобы (необязательно):') || 'Без указания причины';
-            
+
             try {
                 const response = await fetch('/api/messages/report', {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         message_id: messageId,
                         reason: reason
                     })
                 });
-                
+
                 if (response.ok) {
                     alert('Жалоба отправлена. Модераторы рассмотрят её в ближайшее время.');
                 } else {
@@ -1208,7 +1208,7 @@
                 alert('Не удалось отправить жалобу');
             }
         }
-        
+
         // Проверка на администратора
         function isAdmin() {
             try {
@@ -1262,16 +1262,18 @@
                 }
             });
         } else {
-            await loadChats();
-            await loadOnlineStatus();
-            // Если в URL был указан chat_id, открываем этот чат после загрузки списка
-            if (initialChatId) {
-                const chatIdNum = parseInt(initialChatId);
-                const chatExists = allChats.find(c => c.chat_id === chatIdNum);
-                if (chatExists) {
-                    openChat(chatIdNum);
+            (async () => {
+                await loadChats();
+                await loadOnlineStatus();
+                // Если в URL был указан chat_id, открываем этот чат после загрузки списка
+                if (initialChatId) {
+                    const chatIdNum = parseInt(initialChatId);
+                    const chatExists = allChats.find(c => c.chat_id === chatIdNum);
+                    if (chatExists) {
+                        openChat(chatIdNum);
+                    }
                 }
-            }
+            })();
         }
     </script>
 </body>
