@@ -1,6 +1,6 @@
 import os
 import psycopg2
-from psycopg2 import pool
+from psycopg2 import pool, sql
 from typing import Optional
 import logging
 
@@ -61,7 +61,8 @@ def get_db_connection():
         try:
             conn = db_pool.getconn()
             with conn.cursor() as cur:
-                cur.execute('SET search_path TO %s' % psycopg2.extensions.quoted_identifier(SCHEMA_NAME))
+                # Безопасная установка search_path без использования несуществующего quoted_identifier
+                cur.execute('SET search_path TO %s', (sql.Identifier(SCHEMA_NAME).as_string(conn),))
             return conn
         except Exception as e:
             logger.error(f"Ошибка получения соединения из пула: {e}")
@@ -71,7 +72,8 @@ def get_db_connection():
         try:
             conn = psycopg2.connect(**DB_CONFIG)
             with conn.cursor() as cur:
-                cur.execute('SET search_path TO %s' % psycopg2.extensions.quoted_identifier(SCHEMA_NAME))
+                # Безопасная установка search_path без использования несуществующего quoted_identifier
+                cur.execute('SET search_path TO %s', (sql.Identifier(SCHEMA_NAME).as_string(conn),))
             return conn
         except Exception as e:
             raise RuntimeError(f"Не удалось подключиться к базе данных: {e}") from e

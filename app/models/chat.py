@@ -189,7 +189,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         cur.execute("""
             SELECT m.sender_id, u.username, m.text, m.file_path, m.created_at, c.type
             FROM messages m
-            JOIN users u ON m.sender_id = u.id
+            JOIN users u ON m.sender_id = u.user_id
             JOIN chats c ON m.chat_id = c.id
             WHERE m.chat_id = %s
             ORDER BY m.created_at ASC
@@ -237,8 +237,8 @@ def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
             SELECT c.id, u1.username AS user1_name, u2.username AS user2_name,
                    c.user1_id, c.user2_id
             FROM chats c
-            JOIN users u1 ON c.user1_id = u1.id
-            JOIN users u2 ON c.user2_id = u2.id
+            JOIN users u1 ON c.user1_id = u1.user_id
+            JOIN users u2 ON c.user2_id = u2.user_id
             WHERE c.type = 'private' AND (c.user1_id = %s OR c.user2_id = %s)
         """, (user_id, user_id))
 

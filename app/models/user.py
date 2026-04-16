@@ -39,9 +39,12 @@ def create_user(username: str, email: str, password: str, secure_hash: bool = Tr
     
     # Безопасное хеширование пароля с очисткой памяти
     password_bytes = None
+    hashed = None
     try:
+        # Преобразуем строку пароля в bytes для bcrypt
         password_bytes = bytearray(password.encode('utf-8'))
-        hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("utf-8")
+        # bcrypt.hashpw принимает bytes или bytearray, но для надёжности явно конвертируем
+        hashed = bcrypt.hashpw(bytes(password_bytes), bcrypt.gensalt()).decode("utf-8")
     finally:
         # Очищаем память от пароля
         if password_bytes is not None:
@@ -76,13 +79,13 @@ def get_user_by_email(email: str) -> Optional[Tuple[int, str, str]]:
         email: email пользователя
 
     Returns:
-        Кортеж (id, email, password_hash) или None, если не найден
+        Кортеж (user_id, email, password_hash) или None, если не найден
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, password_hash FROM users WHERE email = %s",
+            "SELECT user_id, email, password_hash FROM users WHERE email = %s",
             (email,),
         )
         return cur.fetchone()
@@ -99,13 +102,13 @@ def get_user_by_email_or_username(email_or_username: str) -> Optional[Tuple[int,
         email_or_username: email или username пользователя
 
     Returns:
-        Кортеж (id, email, username) или None, если не найден
+        Кортеж (user_id, email, username) или None, если не найден
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute(
-            """SELECT id, email, username FROM users 
+            """SELECT user_id, email, username FROM users 
                WHERE email = %s OR username = %s""",
             (email_or_username, email_or_username),
         )
@@ -128,7 +131,7 @@ def is_user_admin(user_id: int) -> bool:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
+        cur.execute("SELECT is_admin FROM users WHERE user_id = %s", (user_id,))
         return cur.fetchone()[0] == True
     finally:
         cur.close()
@@ -149,7 +152,7 @@ def ban_user(target_user_id: int) -> bool:
     cur = conn.cursor()
     try:
         cur.execute(
-            "UPDATE users SET is_banned = true WHERE id = %s",
+            "UPDATE users SET is_banned = true WHERE user_id = %s",
             (target_user_id,),
         )
         updated = cur.rowcount > 0
@@ -171,9 +174,9 @@ def get_user_by_id(user_id: int) -> dict:
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, username, email, is_admin, is_banned
+            SELECT user_id, username, email, is_admin, is_banned
             FROM users
-            WHERE id = %s
+            WHERE user_id = %s
         """, (user_id,))
         row = cur.fetchone()
         if not row:
@@ -194,7 +197,7 @@ def get_username(user_id: int) -> str:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        cur.execute("SELECT username FROM users WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
         return row[0] if row else f"Пользователь {user_id}"
     finally:
@@ -245,14 +248,14 @@ def get_all_users(exclude_user_id: Optional[int] = None) -> List[dict]:
     try:
         if exclude_user_id:
             cur.execute("""
-                SELECT id, username, email
+                SELECT user_id, username, email
                 FROM users
-                WHERE id != %s
+                WHERE user_id != %s
                 ORDER BY username
             """, (exclude_user_id,))
         else:
             cur.execute("""
-                SELECT id, username, email
+                SELECT user_id, username, email
                 FROM users
                 ORDER BY username
             """)
@@ -285,15 +288,15 @@ def search_users(query: str, exclude_user_id: Optional[int] = None) -> List[dict
         
         if exclude_user_id:
             cur.execute("""
-                SELECT id, username, email
+                SELECT user_id, username, email
                 FROM users
                 WHERE (username ILIKE %s OR email ILIKE %s)
-                  AND id != %s
+                  AND user_id != %s
                 ORDER BY username
             """, (search_pattern, search_pattern, exclude_user_id))
         else:
             cur.execute("""
-                SELECT id, username, email
+                SELECT user_id, username, email
                 FROM users
                 WHERE username ILIKE %s OR email ILIKE %s
                 ORDER BY username
