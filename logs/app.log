@@ -6,3 +6,28 @@ connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection re
 
 2026-04-16 07:48:09 - root - INFO - Логирование инициализировано
 2026-04-16 08:01:07 - root - INFO - Логирование инициализировано
+2026-04-16 16:59:48 - root - INFO - Логирование инициализировано
+2026-04-16 16:59:48 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 16:59:48 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 16:59:48 - main - INFO - Приложение запущено
+2026-04-16 16:59:58 - app.routes.auth - WARNING - Попытка входа с несуществующим email: admin@example.com
+2026-04-16 17:00:14 - app.routes.auth - INFO - Успешная регистрация пользователя: admin@example.com
+2026-04-16 17:00:22 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 17:00:22 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (1, 1, login, null, null, 2026-04-16 17:00:22.074896+05).
+
+2026-04-16 17:00:53 - app.routes.auth - INFO - Успешная регистрация пользователя: test@gmail.com
+2026-04-16 17:01:08 - app.routes.auth - INFO - Успешный вход пользователя: test@gmail.com (ID: 2)
+2026-04-16 17:01:08 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (2, 2, login, null, null, 2026-04-16 17:01:08.904935+05).
+
+2026-04-16 17:03:03 - main - INFO - Приложение остановлено
+2026-04-16 17:40:59 - root - INFO - Логирование инициализировано
+2026-04-16 17:40:59 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-16 17:40:59 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 17:40:59 - main - INFO - Приложение запущено
+2026-04-16 17:41:06 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 17:41:06 - app.models.chat - ERROR - Ошибка логирования события подключения: ОШИБКА:  новая строка в отношении "connection_logs" нарушает ограничение-проверку "connection_logs_event_type_check"
+DETAIL:  Ошибочная строка содержит (3, 1, login, null, null, 2026-04-16 17:41:06.561676+05).
+
+2026-04-16 17:42:28 - main - INFO - Приложение остановлено

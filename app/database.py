@@ -13,14 +13,14 @@ DB_CONFIG = {
     "port": int(os.getenv("DB_PORT", 5432)),
     "dbname": os.getenv("DB_NAME", "postgres"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASS", ""),
+    "password": os.getenv("DB_PASS", "1234"),
 }
 
 # Проверка: в production пароль не должен быть пустым
 if not os.getenv("DB_PASS") and os.getenv("ENVIRONMENT") == "production":
     raise RuntimeError("В production режиме пароль базы данных должен быть установлен через переменную окружения DB_PASS!")
 
-SCHEMA_NAME = "maxxx-local"
+SCHEMA_NAME = "maxxx"
 
 # === Пул соединений ===
 # Глобальный пул соединений для производительности

@@ -23,17 +23,17 @@ def setup_logging():
     """Настраивает логирование в файл и консоль."""
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
-    
+
     # Создаём корневой логгер
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    
+
     # Форматтер
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     # Обработчик для файла с ротацией
     file_handler = RotatingFileHandler(
         f"{log_dir}/app.log",
@@ -44,13 +44,13 @@ def setup_logging():
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)
     root_logger.addHandler(file_handler)
-    
+
     # Консольный обработчик
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)
     root_logger.addHandler(console_handler)
-    
+
     logging.info("Логирование инициализировано")
 
 setup_logging()
@@ -97,26 +97,40 @@ async def security_headers_middleware(request: Request, call_next):
     - MIME sniffing (X-Content-Type-Options)
     """
     response = await call_next(request)
-    
+
+    # Content Security Policy
+    # Разрешаем inline скрипты и стили для работы текущего фронтенда,
+    # но запрещаем загрузку ресурсов со сторонних доменов.
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' ; "
+        "font-src 'self'; "
+        "connect-src 'self' ws: wss:; "
+        "frame-ancestors 'none';"
+    )
+    response.headers["Content-Security-Policy"] = csp_policy
+
     # HSTS - принудительный HTTPS (защита от MitM)
     # В production установить max_age=31536000 (1 год) и include_sub_domains
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    
+
     # Защита от clickjacking
     response.headers["X-Frame-Options"] = "DENY"
-    
+
     # Запрет MIME sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
-    
+
     # XSS Protection (для старых браузеров)
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    
+
     # Referrer Policy - не передавать referrer на другие сайты
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    
+
     # Permissions Policy - отключаем опасные функции
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    
+
     return response
 
 # Добавляем CORS middleware с ограниченными настройками
