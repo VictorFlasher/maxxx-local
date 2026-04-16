@@ -281,11 +281,13 @@
             padding: 10px 16px;
             border-bottom: 1px solid #eee;
             display: none;
+            gap: 8px;
         }
         .chat-actions.visible {
-            display: block;
+            display: flex;
+            flex-direction: column;
         }
-        .leave-btn {
+        .leave-btn, .delete-chat-btn {
             background: #ff5252;
             color: white;
             border: none;
@@ -294,7 +296,7 @@
             cursor: pointer;
             width: 100%;
         }
-        .leave-btn:hover {
+        .leave-btn:hover, .delete-chat-btn:hover {
             background: #ff1744;
         }
         .invite-btn {
@@ -456,6 +458,7 @@
             <div class="chat-actions" id="chatActions">
                 <button class="leave-btn" onclick="leaveChat()">Покинуть чат</button>
                 <button class="invite-btn" onclick="inviteUser()">Пригласить участника</button>
+                <button class="delete-chat-btn" onclick="deleteChat()">Удалить чат</button>
             </div>
         </div>
         
@@ -531,6 +534,24 @@
                 }
             } catch (err) {
                 console.error('Ошибка загрузки статусов:', err);
+            }
+        }
+        
+        async function loadUnreadCounts() {
+            try {
+                const response = await fetch('/api/chats/unread', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    Object.assign(unreadCounts, data.unread_counts);
+                    // Обновляем бейджи после загрузки
+                    allChats.forEach(chat => {
+                        updateUnreadBadge(chat.chat_id);
+                    });
+                }
+            } catch (err) {
+                console.error('Ошибка загрузки счётчиков непрочитанных:', err);
             }
         }
 
@@ -696,6 +717,60 @@
             }
         }
 
+        // Функция удаления чата (для личных чатов)
+        async function deleteChat() {
+            if (!currentChatId) {
+                alert('Чат не выбран');
+                return;
+            }
+            
+            if (currentChatType !== 'private') {
+                alert('Удаление доступно только для личных чатов');
+                return;
+            }
+
+            if (!confirm('Вы уверены, что хотите удалить этот чат? Вся история переписки будет удалена.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/chats/${currentChatId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    alert('Чат удалён');
+                    // Закрываем WebSocket соединение для этого чата
+                    if (wsConnections[currentChatId]) {
+                        wsConnections[currentChatId].close();
+                        delete wsConnections[currentChatId];
+                    }
+                    // Сбрасываем счётчик непрочитанных
+                    delete unreadCounts[currentChatId];
+                    // Перезагружаем список чатов и очищаем текущий чат
+                    await loadChats();
+                    const messagesDiv = document.getElementById('messages');
+                    while (messagesDiv.firstChild) {
+                        messagesDiv.removeChild(messagesDiv.firstChild);
+                    }
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'empty-chat';
+                    emptyDiv.textContent = 'Выберите чат';
+                    messagesDiv.appendChild(emptyDiv);
+                    currentChatId = null;
+                    currentChatType = null;
+                    document.getElementById('chatActions').classList.remove('visible');
+                } else {
+                    const errorData = await response.json();
+                    alert(`Ошибка: ${errorData.detail || 'Не удалось удалить чат'}`);
+                }
+            } catch (err) {
+                console.error('Ошибка при удалении чата:', err);
+                alert('Не удалось удалить чат');
+            }
+        }
+
         // Функция приглашения пользователя в групповой чат
         async function inviteUser() {
             if (!currentChatId || currentChatType !== 'group') {
@@ -792,10 +867,20 @@
             currentChatType = chatInfo ? chatInfo.type : 'private';
             currentChatName = chatInfo ? chatInfo.name : '';
 
-            // Показываем/скрываем кнопку выхода
+            // Показываем/скрываем кнопки действий в зависимости от типа чата
             const chatActions = document.getElementById('chatActions');
             if (currentChatType === 'group') {
+                // Для группового чата: показать "Покинуть чат" и "Пригласить", скрыть "Удалить"
                 chatActions.classList.add('visible');
+                document.querySelector('.leave-btn').style.display = 'block';
+                document.querySelector('.invite-btn').style.display = 'block';
+                document.querySelector('.delete-chat-btn').style.display = 'none';
+            } else if (currentChatType === 'private') {
+                // Для личного чата: показать только "Удалить чат", скрыть остальные
+                chatActions.classList.add('visible');
+                document.querySelector('.leave-btn').style.display = 'none';
+                document.querySelector('.invite-btn').style.display = 'none';
+                document.querySelector('.delete-chat-btn').style.display = 'block';
             } else {
                 chatActions.classList.remove('visible');
             }
@@ -1030,6 +1115,13 @@
                             // Обновляем отображение списка чатов
                             updateUnreadBadge(chatId);
                         }
+                    } else if (msg.type === 'status' || msg.type === 'user_status_changed') {
+                        // Обработка изменения статуса пользователя (online/offline)
+                        // Поддерживаем оба формата: старый 'status' и новый 'user_status_changed'
+                        const userId = msg.user_id;
+                        const isOnline = msg.status === 'online';
+                        onlineStatus[userId] = isOnline;
+                        updateAllOnlineIndicators();
                     }
                 };
                 

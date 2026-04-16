@@ -53,6 +53,19 @@ def _get_chat_members(chat_id: int) -> List[int]:
         cur.close()
         release_db_connection(conn)
 
+
+def get_chat_members(chat_id: int) -> List[int]:
+    """
+    Публичная функция для получения списка участников чата.
+    
+    Args:
+        chat_id: ID чата
+    
+    Returns:
+        Список ID участников чата
+    """
+    return _get_chat_members(chat_id)
+
 def create_private_chat(user1_id: int, user2_id: int) -> int:
     """
     Создаёт или возвращает существующий личный чат между двумя пользователями.
@@ -194,7 +207,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT m.sender_id, u.username, m.text, m.file_path, m.created_at, c.type
+            SELECT m.message_id, m.sender_id, u.username, m.text, m.file_path, m.created_at, c.type
             FROM messages m
             JOIN users u ON m.sender_id = u.user_id
             JOIN chats c ON m.chat_id = c.id
@@ -206,23 +219,24 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         rows = cur.fetchall()
         result = []
         for row in rows:
-            chat_type = row[5]
+            chat_type = row[6]
             msg = {
-                "sender_id": row[0],
-                "text": row[2],
-                "file_path": row[3],
-                "created_at": row[4].isoformat() if row[4] else None,
+                "message_id": row[0],
+                "sender_id": row[1],
+                "text": row[3],
+                "file_path": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
                 "chat_type": chat_type
             }
 
             # Определяем тип файла
-            if row[3]:  # есть file_path
-                _, ext = os.path.splitext(row[3])
+            if row[4]:  # есть file_path
+                _, ext = os.path.splitext(row[4])
                 msg["file_type"] = ext.lower()
 
             # Только для групповых чатов добавляем имя
             if chat_type == "group":
-                msg["sender_username"] = row[1]
+                msg["sender_username"] = row[2]
             result.append(msg)
 
         return result
@@ -290,18 +304,19 @@ def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
 def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
     """
     Добавляет пользователя в групповой чат.
-    Только владелец чата может приглашать.
+    Любой участник чата может приглашать других.
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Проверяем, что чат групповой и inviter — владелец/создатель
+        # Проверяем, что чат групповой и inviter является участником
         cur.execute("""
-            SELECT COALESCE(owner_id, created_by) FROM chats
-            WHERE id = %s AND type = 'group'
-        """, (chat_id,))
+            SELECT 1 FROM chats c
+            JOIN chat_members cm ON c.id = cm.chat_id
+            WHERE c.id = %s AND c.type = 'group' AND cm.user_id = %s
+        """, (chat_id, inviter_id))
         row = cur.fetchone()
-        if not row or row[0] != inviter_id:
+        if not row:
             return False
 
         # Добавляем участника
@@ -320,6 +335,10 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
     """
     Удаляет пользователя из группового чата.
     Может сделать владелец/создатель или сам пользователь (покинуть чат).
+    Если после удаления не осталось участников - чат автоматически удаляется.
+    
+    Returns:
+        True если успешно, False если ошибка
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -335,9 +354,24 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         if remover_id != owner_id and remover_id != user_id:
             return False
 
+        # Удаляем участника
         cur.execute("DELETE FROM chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, user_id))
+        
+        # Проверяем, остались ли участники
+        cur.execute("SELECT COUNT(*) FROM chat_members WHERE chat_id = %s", (chat_id,))
+        remaining_count = cur.fetchone()[0]
+        
+        # Если участников не осталось - удаляем чат и все сообщения
+        if remaining_count == 0:
+            cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
+            cur.execute("DELETE FROM chats WHERE id = %s", (chat_id,))
+        
         conn.commit()
         return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Ошибка при выходе из группового чата {chat_id}: {e}")
+        return False
     finally:
         cur.close()
         release_db_connection(conn)
@@ -416,7 +450,7 @@ def log_connection_event(user_id: int, event_type: str) -> None:
 
     Args:
         user_id: ID пользователя
-        event_type: Тип события ('login', 'logout', 'websocket_connect', 'websocket_disconnect')
+        event_type: Тип события ('connect', 'disconnect')
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -432,6 +466,114 @@ def log_connection_event(user_id: int, event_type: str) -> None:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Ошибка логирования события подключения: {e}")
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+def update_last_read_message(user_id: int, chat_id: int, message_id: int) -> None:
+    """
+    Обновляет последнее прочитанное сообщение для пользователя в чате.
+
+    Args:
+        user_id: ID пользователя
+        chat_id: ID чата
+        message_id: ID последнего прочитанного сообщения
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO last_read_messages (user_id, chat_id, last_read_message_id, updated_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (user_id, chat_id)
+            DO UPDATE SET last_read_message_id = %s, updated_at = NOW()
+        """, (user_id, chat_id, message_id, message_id))
+        conn.commit()
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+def get_unread_count(user_id: int) -> Dict[int, int]:
+    """
+    Возвращает количество непрочитанных сообщений для каждого чата пользователя.
+
+    Args:
+        user_id: ID пользователя
+
+    Returns:
+        Словарь {chat_id: unread_count}
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Получаем все чаты пользователя
+        cur.execute("""
+            SELECT c.id FROM chats c
+            WHERE c.type = 'private' AND (c.user1_id = %s OR c.user2_id = %s)
+            UNION
+            SELECT c.id FROM chats c
+            JOIN chat_members cm ON c.id = cm.chat_id
+            WHERE c.type = 'group' AND cm.user_id = %s
+        """, (user_id, user_id, user_id))
+        
+        chat_ids = [row[0] for row in cur.fetchall()]
+        result = {}
+        
+        for chat_id in chat_ids:
+            # Получаем ID последнего прочитанного сообщения
+            cur.execute("""
+                SELECT last_read_message_id FROM last_read_messages
+                WHERE user_id = %s AND chat_id = %s
+            """, (user_id, chat_id))
+            row = cur.fetchone()
+            last_read_id = row[0] if row else None
+            
+            # Считаем непрочитанные сообщения
+            if last_read_id:
+                cur.execute("""
+                    SELECT COUNT(*) FROM messages
+                    WHERE chat_id = %s AND message_id > %s AND sender_id != %s
+                """, (chat_id, last_read_id, user_id))
+            else:
+                # Если никогда не читал, считаем все сообщения кроме своих
+                cur.execute("""
+                    SELECT COUNT(*) FROM messages
+                    WHERE chat_id = %s AND sender_id != %s
+                """, (chat_id, user_id))
+            
+            count = cur.fetchone()[0]
+            if count > 0:
+                result[chat_id] = count
+        
+        return result
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+def get_chat_last_message_id(chat_id: int) -> Optional[int]:
+    """
+    Возвращает ID последнего сообщения в чате.
+
+    Args:
+        chat_id: ID чата
+
+    Returns:
+        ID последнего сообщения или None
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM messages
+            WHERE chat_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+        """, (chat_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
     finally:
         cur.close()
         release_db_connection(conn)
