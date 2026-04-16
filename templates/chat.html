@@ -1262,16 +1262,18 @@
                 }
             });
         } else {
-            await loadChats();
-            await loadOnlineStatus();
-            // Если в URL был указан chat_id, открываем этот чат после загрузки списка
-            if (initialChatId) {
-                const chatIdNum = parseInt(initialChatId);
-                const chatExists = allChats.find(c => c.chat_id === chatIdNum);
-                if (chatExists) {
-                    openChat(chatIdNum);
+            (async () => {
+                await loadChats();
+                await loadOnlineStatus();
+                // Если в URL был указан chat_id, открываем этот чат после загрузки списка
+                if (initialChatId) {
+                    const chatIdNum = parseInt(initialChatId);
+                    const chatExists = allChats.find(c => c.chat_id === chatIdNum);
+                    if (chatExists) {
+                        openChat(chatIdNum);
+                    }
                 }
-            }
+            })();
         }
     </script>
 </body>
