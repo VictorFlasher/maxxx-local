@@ -1,12 +1,1 @@
-```
-# Compiled Python files
-*.pyc
-__pycache__/
-
-# Environment files
-.env.local
-.env
-
-# Test cache
-.pytest_cache/
-```
+Nothing should be ignored based on the provided file changes. The only modified file is 'templates/chat.html', which is a source/template file and should not be ignored.

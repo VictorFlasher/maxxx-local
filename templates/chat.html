@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:;">
     <title>Maxxx-Chat</title>
     <style>
         * {
@@ -488,6 +488,17 @@
     <div class="connection-status" id="connectionStatus"></div>
 
     <script>
+        // Обработчик клика по label для загрузки файла (должен быть до основного кода)
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileLabel = document.querySelector('.file-label');
+            const fileInput = document.getElementById('fileInput');
+            if (fileLabel && fileInput) {
+                fileLabel.addEventListener('click', () => {
+                    fileInput.click();
+                });
+            }
+        });
+
         let currentChatId = null;
         const token = localStorage.getItem('access_token');
         if (!token) {
@@ -1198,11 +1209,7 @@
             }
         }
 
-        // Загрузка файла
-        document.querySelector('.file-label').addEventListener('click', () => {
-            document.getElementById('fileInput').click();
-        });
-
+        // Загрузка файла - обработчик change
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -1231,8 +1238,15 @@
         });
 
         // Загружаем чаты и статусы при старте
-        loadChats();
-        loadOnlineStatus();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                loadChats();
+                loadOnlineStatus();
+            });
+        } else {
+            loadChats();
+            loadOnlineStatus();
+        }
     </script>
 </body>
 </html>
