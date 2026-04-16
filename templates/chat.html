@@ -709,14 +709,13 @@
             }
 
             try {
-                const response = await fetch('/api/chats/invite', {
+                const response = await fetch(`/api/chats/${currentChatId}/invite`, {
                     method: 'POST',
                     headers: { 
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ 
-                        chat_id: currentChatId,
                         user_email_or_username: emailOrUsername.trim()
                     })
                 });
@@ -1262,16 +1261,18 @@
                 }
             });
         } else {
-            await loadChats();
-            await loadOnlineStatus();
-            // Если в URL был указан chat_id, открываем этот чат после загрузки списка
-            if (initialChatId) {
-                const chatIdNum = parseInt(initialChatId);
-                const chatExists = allChats.find(c => c.chat_id === chatIdNum);
-                if (chatExists) {
-                    openChat(chatIdNum);
+            (async () => {
+                await loadChats();
+                await loadOnlineStatus();
+                // Если в URL был указан chat_id, открываем этот чат после загрузки списка
+                if (initialChatId) {
+                    const chatIdNum = parseInt(initialChatId);
+                    const chatExists = allChats.find(c => c.chat_id === chatIdNum);
+                    if (chatExists) {
+                        openChat(chatIdNum);
+                    }
                 }
-            }
+            })();
         }
     </script>
 </body>
