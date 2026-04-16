@@ -154,6 +154,14 @@
     
     <div class="container">
         <h2>Найти пользователя</h2>
+        
+        <!-- Кнопка создания группового чата -->
+        <div style="margin-bottom: 1.5rem; text-align: center;">
+            <button onclick="showCreateGroupModal()" class="create-chat-btn" style="background: #00a884; padding: 12px 24px; font-size: 16px;">
+                ➕ Создать групповой чат
+            </button>
+        </div>
+        
         <div class="search-box">
             <input type="text" id="searchInput" placeholder="Введите имя или email..." onkeypress="if(event.key === 'Enter') searchUsers()">
             <button onclick="searchUsers()">Найти</button>
@@ -161,6 +169,18 @@
         <ul class="users-list" id="usersList">
             <li class="loading">Введите запрос для поиска...</li>
         </ul>
+    </div>
+
+    <!-- Модальное окно для создания группового чата -->
+    <div id="createGroupModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 2rem; border-radius: 8px; width: 400px; max-width: 90%;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Создание группового чата</h3>
+            <input type="text" id="groupNameInput" placeholder="Название группы..." style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; margin-bottom: 1rem; box-sizing: border-box;">
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeCreateGroupModal()" style="padding: 10px 20px; background: #9e9e9e; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Отмена</button>
+                <button onclick="createGroupChat()" style="padding: 10px 20px; background: #00a884; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">Создать</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -171,6 +191,49 @@
 
         function goBack() {
             window.location.href = '/chat';
+        }
+
+        // Функции для создания группового чата
+        function showCreateGroupModal() {
+            document.getElementById('createGroupModal').style.display = 'flex';
+            document.getElementById('groupNameInput').focus();
+        }
+
+        function closeCreateGroupModal() {
+            document.getElementById('createGroupModal').style.display = 'none';
+            document.getElementById('groupNameInput').value = '';
+        }
+
+        async function createGroupChat() {
+            const groupName = document.getElementById('groupNameInput').value.trim();
+            if (!groupName) {
+                alert('Введите название группы');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/chats/group', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: groupName })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    alert('Групповой чат создан! Переходим к переписке...');
+                    closeCreateGroupModal();
+                    window.location.href = `/chat?chat_id=${data.chat_id}`;
+                } else {
+                    const errorData = await response.json();
+                    alert(`Ошибка: ${errorData.detail || 'Не удалось создать чат'}`);
+                }
+            } catch (err) {
+                console.error('Ошибка:', err);
+                alert('Не удалось создать групповой чат');
+            }
         }
 
         async function searchUsers() {
