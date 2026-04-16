@@ -470,6 +470,10 @@ DETAIL:  Ошибочная строка содержит (119, 1, websocket_dis
 2026-04-16 22:36:38 - root - INFO - Логирование инициализировано
 2026-04-16 22:36:38 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
 2026-04-16 22:36:38 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
+2026-04-16 22:36:38 - main - INFO - Приложение запущено
+2026-04-16 22:36:53 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-16 22:38:05 - main - INFO - Приложение остановлено
+2026-04-16 22:44:38 - root - INFO - Логирование инициализировано
 2026-04-16 22:44:38 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
 2026-04-16 22:44:38 - app.utils.redis_manager - INFO - Redis отключён (REDIS_ENABLED=false)
 2026-04-16 22:44:38 - main - INFO - Приложение запущено
