@@ -415,9 +415,9 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
     # Логируем событие подключения WebSocket
     try:
         from ..models.chat import log_connection_event
-        log_connection_event(user_id, 'websocket_connect')
+        log_connection_event(user_id, 'connect')
     except Exception as e:
-        logger.error(f"Ошибка логирования websocket_connect: {str(e)}")
+        logger.error(f"Ошибка логирования connect: {str(e)}")
 
     # === Восстановление сообщений при reconnect ===
     if last_message_id is not None:
@@ -491,9 +491,11 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         """
                         INSERT INTO messages (chat_id, sender_id, text, created_at)
                         VALUES (%s, %s, %s, %s)
+                        RETURNING id
                         """,
                         (chat_id, user_id, text, datetime.now(timezone.utc)),
                     )
+                    message_id = cur.fetchone()[0]
                     conn.commit()
                 finally:
                     cur.close()
@@ -534,6 +536,10 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                     },
                 )
 
+                # === 4. Обновляем последнее прочитанное сообщение для отправителя ===
+                from ..models.chat import update_last_read_message
+                update_last_read_message(user_id, chat_id, message_id)
+
             except json.JSONDecodeError:
                 await websocket.send_json({"error": "Неверный JSON"})
 
@@ -543,9 +549,9 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
         # Логируем событие отключения WebSocket
         try:
             from ..models.chat import log_connection_event
-            log_connection_event(user_id, 'websocket_disconnect')
+            log_connection_event(user_id, 'disconnect')
         except Exception as e:
-            logger.error(f"Ошибка логирования websocket_disconnect: {str(e)}")
+            logger.error(f"Ошибка логирования disconnect: {str(e)}")
         
         # === Удаляем соединение из Redis и локального кэша ===
         await redis_remove_connection(chat_id, user_id)
@@ -606,6 +612,13 @@ def get_messages(
         )
 
     history = get_chat_history(chat_id, limit)
+    
+    # Обновляем последнее прочитанное сообщение при загрузке истории
+    from ..models.chat import update_last_read_message, get_chat_last_message_id
+    last_msg_id = get_chat_last_message_id(chat_id)
+    if last_msg_id:
+        update_last_read_message(current_user_id, chat_id, last_msg_id)
+    
     return {"messages": history}
 
 @router.post("/chats/{chat_id}/upload", summary="Загрузить файл в чат")
@@ -689,7 +702,15 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
 @router.get("/chats/me", summary="Получить список моих чатов")
 def get_my_chats(current_user_id: int = Depends(get_current_user_from_header)):
     """Возвращает все чаты текущего пользователя."""
-    return {"chats": get_user_chats(current_user_id)}
+    from ..models.chat import get_unread_count
+    chats = get_user_chats(current_user_id)
+    unread_counts = get_unread_count(current_user_id)
+    
+    # Добавляем информацию о непрочитанных сообщениях к каждому чату
+    for chat in chats:
+        chat["unread_count"] = unread_counts.get(chat["chat_id"], 0)
+    
+    return {"chats": chats}
 
 
 @router.post("/chats/{chat_id}/invite", summary="Пригласить пользователя в групповой чат")
@@ -793,13 +814,15 @@ def get_users_status(
     Возвращает словарь {user_id: True/False} для всех пользователей в чатах текущего пользователя.
     True = онлайн, False = оффлайн.
     """
+    from ..models.chat import get_chat_members
+    
     # Получаем все чаты пользователя
     user_chats = get_user_chats(current_user_id)
     
     # Собираем всех уникальных пользователей из этих чатов
     all_user_ids = set()
     for chat in user_chats:
-        members = _get_chat_members(chat["chat_id"])
+        members = get_chat_members(chat["chat_id"])
         all_user_ids.update(members)
     
     # Исключаем текущего пользователя
@@ -808,6 +831,18 @@ def get_users_status(
     # Формируем результат
     status = {user_id: user_id in online_users for user_id in all_user_ids}
     return {"online_status": status}
+
+
+@router.get("/chats/unread", summary="Получить количество непрочитанных сообщений")
+def get_unread_counts(
+    current_user_id: int = Depends(get_current_user_from_header),
+):
+    """
+    Возвращает количество непрочитанных сообщений для каждого чата.
+    """
+    from ..models.chat import get_unread_count
+    unread = get_unread_count(current_user_id)
+    return {"unread_counts": unread}
 
 
 # === Маршруты для управления сообщениями (редактирование, удаление, жалобы) ===
@@ -931,21 +966,33 @@ def report_message(
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Проверяем, существует ли сообщение
+        # Проверяем, существует ли сообщение и получаем данные о чате
         cur.execute(
-            "SELECT message_id FROM messages WHERE message_id = %s",
+            """
+            SELECT m.message_id, m.sender_id, m.chat_id, c.type 
+            FROM messages m
+            JOIN chats c ON m.chat_id = c.id
+            WHERE m.message_id = %s
+            """,
             (request.message_id,)
         )
-        if not cur.fetchone():
+        row = cur.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        
+        message_id, sender_id, chat_id, chat_type = row
+        
+        # Для личных чатов - нельзя пожаловаться на себя
+        if chat_type == 'private' and sender_id == current_user_id:
+            raise HTTPException(status_code=400, detail="Нельзя пожаловаться на своё сообщение")
         
         # Сохраняем жалобу
         cur.execute(
             """
             INSERT INTO message_reports (message_id, reporter_id, reason, created_at)
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s, NOW())
             """,
-            (request.message_id, current_user_id, request.reason, datetime.now(timezone.utc))
+            (request.message_id, current_user_id, request.reason)
         )
         conn.commit()
         

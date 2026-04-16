@@ -209,7 +209,7 @@ def login(request: Request, user: UserLogin):
     
     # Логируем событие подключения
     try:
-        log_connection_event(db_user[0], 'login')
+        log_connection_event(db_user[0], 'connect')
     except Exception as e:
         logger.error(f"Ошибка логирования события входа: {str(e)}")
     
