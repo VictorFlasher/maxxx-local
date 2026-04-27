@@ -30,6 +30,33 @@ CREATE INDEX IF NOT EXISTS idx_last_read_user_chat ON last_read_messages(user_id
 -- Для групповых: автоматическое удаление при 0 участников обрабатывается в коде
 ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
 
+-- Таблица активных банов с причиной и сроком (NULL = бессрочно)
+CREATE TABLE IF NOT EXISTS bans (
+    ban_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    banned_by INTEGER REFERENCES users(user_id),
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ, -- NULL = бессрочный бан
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_bans_user_id ON bans(user_id);
+CREATE INDEX IF NOT EXISTS idx_bans_active ON bans(is_active);
+
+-- Таблица истории банов (все действия: бан, разбан, продление)
+CREATE TABLE IF NOT EXISTS ban_history (
+    history_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    action VARCHAR(20) NOT NULL CHECK (action IN ('banned', 'unbanned', 'extended')),
+    banned_by INTEGER REFERENCES users(user_id),
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ban_history_user_id ON ban_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_ban_history_action ON ban_history(action);
+
 -- Исправление ограничения check для connection_logs, если оно слишком строгое
 -- Убедимся, что типы событий соответствуют тем, что мы шлем в коде
 -- (обычно 'connect', 'disconnect', 'login' - проверьте ваше ограничение)
