@@ -191,6 +191,7 @@ def login(request: Request, user: UserLogin):
     Логирует попытки входа (успешные и неудачные).
     Использует безопасную проверку пароля с очисткой памяти.
     Защищено от brute-force атак (rate limiting).
+    Проверяет бан пользователя перед выдачей токена.
     """
     db_user = get_user_by_email(user.email)
     if not db_user:
@@ -203,6 +204,17 @@ def login(request: Request, user: UserLogin):
     if not secure_verify_password(user.password, stored_hash):
         logger.warning(f"Неудачная попытка входа: {user.email}")
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
+
+    # Проверяем, не забанен ли пользователь, ДО выдачи токена
+    user_id = db_user[0]
+    try:
+        user_data = get_user_by_id(user_id)
+        if user_data["is_banned"]:
+            logger.warning(f"Попытка входа забаненного пользователя: {user.email} (ID: {user_id})")
+            raise HTTPException(status_code=403, detail="Ваш аккаунт заблокирован. Обратитесь к администрации.")
+    except ValueError:
+        logger.error(f"Ошибка при проверке статуса пользователя: {user.email}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
     token = create_access_token({"sub": db_user[1], "user_id": db_user[0]})
     logger.info(f"Успешный вход пользователя: {user.email} (ID: {db_user[0]})")
