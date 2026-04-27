@@ -343,15 +343,20 @@ def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -
         cur.execute("UPDATE users SET is_banned = true WHERE user_id = %s", (target_user_id,))
         
         # 2. Создаём запись в таблице bans (бессрочный бан)
+        # Используем ON CONFLICT для обновления существующей записи
         cur.execute("""
-            INSERT INTO bans (user_id, banned_by, reason, expires_at)
-            VALUES (%s, %s, %s, NULL)
+            INSERT INTO bans (user_id, banned_by, reason)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET 
+                banned_by = EXCLUDED.banned_by,
+                reason = EXCLUDED.reason,
+                created_at = CURRENT_TIMESTAMP
         """, (target_user_id, admin_user_id, reason))
         
         # 3. Записываем в историю
         cur.execute("""
-            INSERT INTO ban_history (user_id, action, banned_by, reason)
-            VALUES (%s, 'banned', %s, %s)
+            INSERT INTO ban_history (user_id, action, performed_by, reason)
+            VALUES (%s, 'ban', %s, %s)
         """, (target_user_id, admin_user_id, reason))
         
         conn.commit()
@@ -391,13 +396,13 @@ def unban_user(user_id: int, admin_user_id: int) -> bool:
         # 1. Снимаем флаг бана
         cur.execute("UPDATE users SET is_banned = false WHERE user_id = %s", (user_id,))
         
-        # 2. Деактивируем активные баны
-        cur.execute("UPDATE bans SET is_active = false WHERE user_id = %s AND is_active = true", (user_id,))
+        # 2. Удаляем запись из таблицы активных банов
+        cur.execute("DELETE FROM bans WHERE user_id = %s", (user_id,))
         
         # 3. Записываем в историю
         cur.execute("""
-            INSERT INTO ban_history (user_id, action, banned_by)
-            VALUES (%s, 'unbanned', %s)
+            INSERT INTO ban_history (user_id, action, performed_by)
+            VALUES (%s, 'unban', %s)
         """, (user_id, admin_user_id))
         
         conn.commit()
@@ -430,11 +435,11 @@ def get_ban_history(user_id: Optional[int] = None, limit: int = 50) -> List[dict
         if user_id:
             cur.execute("""
                 SELECT h.history_id, h.user_id, u.username, h.action, 
-                       h.banned_by, bu.username as banned_by_username,
+                       h.performed_by, bu.username as performed_by_username,
                        h.reason, h.created_at
                 FROM ban_history h
                 JOIN users u ON h.user_id = u.user_id
-                LEFT JOIN users bu ON h.banned_by = bu.user_id
+                LEFT JOIN users bu ON h.performed_by = bu.user_id
                 WHERE h.user_id = %s
                 ORDER BY h.created_at DESC
                 LIMIT %s
@@ -442,11 +447,11 @@ def get_ban_history(user_id: Optional[int] = None, limit: int = 50) -> List[dict
         else:
             cur.execute("""
                 SELECT h.history_id, h.user_id, u.username, h.action, 
-                       h.banned_by, bu.username as banned_by_username,
+                       h.performed_by, bu.username as performed_by_username,
                        h.reason, h.created_at
                 FROM ban_history h
                 JOIN users u ON h.user_id = u.user_id
-                LEFT JOIN users bu ON h.banned_by = bu.user_id
+                LEFT JOIN users bu ON h.performed_by = bu.user_id
                 ORDER BY h.created_at DESC
                 LIMIT %s
             """, (limit,))
@@ -458,8 +463,8 @@ def get_ban_history(user_id: Optional[int] = None, limit: int = 50) -> List[dict
                 "user_id": row[1],
                 "username": row[2],
                 "action": row[3],
-                "banned_by": row[4],
-                "banned_by_username": row[5],
+                "performed_by": row[4],
+                "performed_by_username": row[5],
                 "reason": row[6],
                 "created_at": row[7].isoformat() if row[7] else None
             }
@@ -483,11 +488,10 @@ def get_active_bans() -> List[dict]:
         cur.execute("""
             SELECT b.ban_id, b.user_id, u.username, b.banned_by, 
                    bu.username as banned_by_username, b.reason, 
-                   b.created_at, b.expires_at
+                   b.created_at
             FROM bans b
             JOIN users u ON b.user_id = u.user_id
             LEFT JOIN users bu ON b.banned_by = bu.user_id
-            WHERE b.is_active = true
             ORDER BY b.created_at DESC
         """)
         
@@ -500,8 +504,7 @@ def get_active_bans() -> List[dict]:
                 "banned_by": row[3],
                 "banned_by_username": row[4],
                 "reason": row[5],
-                "created_at": row[6].isoformat() if row[6] else None,
-                "expires_at": row[7].isoformat() if row[7] else None
+                "created_at": row[6].isoformat() if row[6] else None
             }
             for row in rows
         ]

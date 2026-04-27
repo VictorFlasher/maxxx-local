@@ -229,10 +229,10 @@
             const history = await res.json();
             document.getElementById('history-list').innerHTML = history.map(h => `
                 <div class="history-item ${h.action}">
-                    <strong>${h.action === 'banned' ? '🚫 Забанен' : '✅ Разбанен'}</strong>
+                    <strong>${h.action === 'ban' ? '🚫 Забанен' : '✅ Разбанен'}</strong>
                     Пользователь: ${h.username} (ID: ${h.user_id})<br>
-                    ${h.action === 'banned' ? 'Причина: ' + escapeHtml(h.reason) + '<br>' : ''}
-                    Админ: ${h.banned_by_username || 'N/A'}<br>
+                    ${h.action === 'ban' ? 'Причина: ' + escapeHtml(h.reason) + '<br>' : ''}
+                    Админ: ${h.performed_by_username || 'N/A'}<br>
                     <small>${new Date(h.created_at).toLocaleString()}</small>
                 </div>
             `).join('') || '<p>История пуста</p>';
