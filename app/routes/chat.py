@@ -927,51 +927,50 @@ def edit_message(
         conn.commit()
         
         # Отправляем уведомление всем участникам чата через WebSocket
-        if background_tasks:
-            from ..models.chat import _get_chat_members
-            members = _get_chat_members(chat_id)
-            # Кэшируем тип чата и username
-            from ..utils.redis_manager import redis_cache_get, redis_cache_set
-            chat_type_cache_key = f"chat_type:{chat_id}"
-            chat_type_cached = redis_cache_get(chat_type_cache_key)
-            if chat_type_cached:
-                chat_type = chat_type_cached
+        from ..models.chat import _get_chat_members
+        members = _get_chat_members(chat_id)
+        # Кэшируем тип чата и username
+        from ..utils.redis_manager import redis_cache_get, redis_cache_set
+        chat_type_cache_key = f"chat_type:{chat_id}"
+        chat_type_cached = redis_cache_get(chat_type_cache_key)
+        if chat_type_cached:
+            chat_type = chat_type_cached
+        else:
+            from ..models.chat import get_chat_type
+            chat_type = get_chat_type(chat_id)
+            redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+        
+        sender_username = None
+        if chat_type == "group":
+            cache_key = f"username:{sender_id}"
+            cached = redis_cache_get(cache_key)
+            if cached:
+                sender_username = cached
             else:
-                from ..models.chat import get_chat_type
-                chat_type = get_chat_type(chat_id)
-                redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
-            
-            sender_username = None
-            if chat_type == "group":
-                cache_key = f"username:{sender_id}"
-                cached = redis_cache_get(cache_key)
-                if cached:
-                    sender_username = cached
-                else:
-                    from ..models.user import get_username
-                    sender_username = get_username(sender_id)
-                    redis_cache_set(cache_key, sender_username, ttl=600)
-            
-            # Рассылаем обновление
-            import asyncio
-            from fastapi.websockets import WebSocketState
-            global active_connections
-            for user_id in members:
-                ws = active_connections.get(chat_id, {}).get(user_id)
-                if ws and ws.client_state == WebSocketState.CONNECTED:
-                    try:
-                        asyncio.create_task(ws.send_json({
-                            "type": "message_edited",
-                            "message_id": message_id,
-                            "chat_id": chat_id,
-                            "sender_id": sender_id,
-                            "sender_username": sender_username,
-                            "text": text,
-                            "edited_at": edited_at.isoformat(),
-                            "chat_type": chat_type
-                        }))
-                    except Exception:
-                        pass
+                from ..models.user import get_username
+                sender_username = get_username(sender_id)
+                redis_cache_set(cache_key, sender_username, ttl=600)
+        
+        # Рассылаем обновление
+        import asyncio
+        from fastapi.websockets import WebSocketState
+        global active_connections
+        for user_id in members:
+            ws = active_connections.get(chat_id, {}).get(user_id)
+            if ws and ws.client_state == WebSocketState.CONNECTED:
+                try:
+                    asyncio.create_task(ws.send_json({
+                        "type": "message_edited",
+                        "message_id": message_id,
+                        "chat_id": chat_id,
+                        "sender_id": sender_id,
+                        "sender_username": sender_username,
+                        "text": text,
+                        "edited_at": edited_at.isoformat(),
+                        "chat_type": chat_type
+                    }))
+                except Exception:
+                    pass
         
         return {"message": "Сообщение отредактировано"}
     except HTTPException:
@@ -1024,37 +1023,36 @@ def delete_message(
         conn.commit()
         
         # Отправляем уведомление всем участникам чата через WebSocket
-        if background_tasks or True:  # Всегда отправляем уведомление
-            from ..models.chat import _get_chat_members
-            members = _get_chat_members(chat_id)
-            # Кэшируем тип чата
-            from ..utils.redis_manager import redis_cache_get, redis_cache_set
-            chat_type_cache_key = f"chat_type:{chat_id}"
-            chat_type_cached = redis_cache_get(chat_type_cache_key)
-            if chat_type_cached:
-                chat_type = chat_type_cached
-            else:
-                from ..models.chat import get_chat_type
-                chat_type = get_chat_type(chat_id)
-                redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
-            
-            # Рассылаем обновление
-            import asyncio
-            from fastapi.websockets import WebSocketState
-            global active_connections
-            for user_id in members:
-                ws = active_connections.get(chat_id, {}).get(user_id)
-                if ws and ws.client_state == WebSocketState.CONNECTED:
-                    try:
-                        asyncio.create_task(ws.send_json({
-                            "type": "message_deleted",
-                            "message_id": message_id,
-                            "chat_id": chat_id,
-                            "deleted_by": current_user_id,
-                            "chat_type": chat_type
-                        }))
-                    except Exception:
-                        pass
+        from ..models.chat import _get_chat_members
+        members = _get_chat_members(chat_id)
+        # Кэшируем тип чата и username
+        from ..utils.redis_manager import redis_cache_get, redis_cache_set
+        chat_type_cache_key = f"chat_type:{chat_id}"
+        chat_type_cached = redis_cache_get(chat_type_cache_key)
+        if chat_type_cached:
+            chat_type = chat_type_cached
+        else:
+            from ..models.chat import get_chat_type
+            chat_type = get_chat_type(chat_id)
+            redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+        
+        # Рассылаем обновление
+        import asyncio
+        from fastapi.websockets import WebSocketState
+        global active_connections
+        for user_id in members:
+            ws = active_connections.get(chat_id, {}).get(user_id)
+            if ws and ws.client_state == WebSocketState.CONNECTED:
+                try:
+                    asyncio.create_task(ws.send_json({
+                        "type": "message_deleted",
+                        "message_id": message_id,
+                        "chat_id": chat_id,
+                        "deleted_by": current_user_id,
+                        "chat_type": chat_type
+                    }))
+                except Exception:
+                    pass
         
         return {"message": "Сообщение удалено"}
     except HTTPException:
