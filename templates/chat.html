@@ -1054,6 +1054,8 @@
 
                 ws.onmessage = (event) => {
                     const msg = JSON.parse(event.data);
+                    
+                    // Обработка обычного нового сообщения
                     if (msg.type === 'message') {
                         // Если сообщение пришло в текущий открытый чат - отображаем его
                         if (msg.chat_id === currentChatId) {
@@ -1115,9 +1117,31 @@
                             // Обновляем отображение списка чатов
                             updateUnreadBadge(chatId);
                         }
-                    } else if (msg.type === 'status' || msg.type === 'user_status_changed') {
-                        // Обработка изменения статуса пользователя (online/offline)
-                        // Поддерживаем оба формата: старый 'status' и новый 'user_status_changed'
+                    }
+                    // Обработка редактирования сообщения
+                    else if (msg.type === 'message_edited') {
+                        if (msg.chat_id === currentChatId) {
+                            const messageDiv = document.querySelector(`.message[data-message-id="${msg.message_id}"]`);
+                            if (messageDiv) {
+                                // Находим текстовый узел и обновляем его
+                                const textNode = Array.from(messageDiv.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+                                if (textNode) {
+                                    textNode.textContent = msg.text;
+                                }
+                                // Добавляем метку "изменено" если её ещё нет
+                                if (!messageDiv.querySelector('.edited-mark')) {
+                                    const editedMark = document.createElement('span');
+                                    editedMark.className = 'edited-mark';
+                                    editedMark.textContent = ' (изм.)';
+                                    editedMark.style.fontSize = '0.75em';
+                                    editedMark.style.color = '#888';
+                                    messageDiv.appendChild(editedMark);
+                                }
+                            }
+                        }
+                    }
+                    // Обработка изменения статуса пользователя (online/offline)
+                    else if (msg.type === 'status' || msg.type === 'user_status_changed') {
                         const userId = msg.user_id;
                         const isOnline = msg.status === 'online';
                         onlineStatus[userId] = isOnline;

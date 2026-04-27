@@ -852,10 +852,12 @@ def edit_message(
     message_id: int,
     request: dict,
     current_user_id: int = Depends(get_current_user_from_header),
+    background_tasks: BackgroundTasks = None,
 ):
     """
     Редактирует текст сообщения.
     Можно редактировать только свои текстовые сообщения (не файлы).
+    После редактирования отправляет обновление всем участникам чата через WebSocket.
     """
     text = request.get("text", "").strip()
     if not text:
@@ -867,7 +869,7 @@ def edit_message(
         # Проверяем, существует ли сообщение и принадлежит ли оно пользователю
         cur.execute(
             """
-            SELECT sender_id, file_path FROM messages WHERE message_id = %s
+            SELECT sender_id, file_path, chat_id FROM messages WHERE message_id = %s
             """,
             (message_id,)
         )
@@ -876,7 +878,7 @@ def edit_message(
         if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
         
-        sender_id, file_path = row
+        sender_id, file_path, chat_id = row
         
         if file_path:
             raise HTTPException(status_code=400, detail="Нельзя редактировать файлы")
@@ -885,15 +887,63 @@ def edit_message(
             raise HTTPException(status_code=403, detail="Можно редактировать только свои сообщения")
         
         # Обновляем сообщение
+        edited_at = datetime.now(timezone.utc)
         cur.execute(
             """
             UPDATE messages 
             SET text = %s, edited_at = %s 
             WHERE message_id = %s
             """,
-            (text, datetime.now(timezone.utc), message_id)
+            (text, edited_at, message_id)
         )
         conn.commit()
+        
+        # Отправляем уведомление всем участникам чата через WebSocket
+        if background_tasks:
+            from ..models.chat import _get_chat_members
+            members = _get_chat_members(chat_id)
+            # Кэшируем тип чата и username
+            from ..utils.redis_manager import redis_cache_get, redis_cache_set
+            chat_type_cache_key = f"chat_type:{chat_id}"
+            chat_type_cached = redis_cache_get(chat_type_cache_key)
+            if chat_type_cached:
+                chat_type = chat_type_cached
+            else:
+                from ..models.chat import get_chat_type
+                chat_type = get_chat_type(chat_id)
+                redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+            
+            sender_username = None
+            if chat_type == "group":
+                cache_key = f"username:{sender_id}"
+                cached = redis_cache_get(cache_key)
+                if cached:
+                    sender_username = cached
+                else:
+                    from ..models.user import get_username
+                    sender_username = get_username(sender_id)
+                    redis_cache_set(cache_key, sender_username, ttl=600)
+            
+            # Рассылаем обновление
+            import asyncio
+            from fastapi.websockets import WebSocketState
+            global active_connections
+            for user_id in members:
+                ws = active_connections.get(chat_id, {}).get(user_id)
+                if ws and ws.client_state == WebSocketState.CONNECTED:
+                    try:
+                        asyncio.create_task(ws.send_json({
+                            "type": "message_edited",
+                            "message_id": message_id,
+                            "chat_id": chat_id,
+                            "sender_id": sender_id,
+                            "sender_username": sender_username,
+                            "text": text,
+                            "edited_at": edited_at.isoformat(),
+                            "chat_type": chat_type
+                        }))
+                    except Exception:
+                        pass
         
         return {"message": "Сообщение отредактировано"}
     except HTTPException:
