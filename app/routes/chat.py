@@ -395,6 +395,8 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
         return
 
     await websocket.accept()
+    
+    logger.info(f"WebSocket подключён: user_id={user_id}, chat_id={chat_id}")
 
     # === Добавляем соединение в Redis и локальный кэш ===
     await redis_add_connection(chat_id, user_id, INSTANCE_ID)
@@ -1076,16 +1078,21 @@ def report_message(
     """
     Создаёт жалобу на сообщение.
     Жалоба сохраняется в БД для последующей модерации.
+    
+    Нельзя пожаловаться:
+    - На своё сообщение
+    - На сообщение админа (админы модерируются только другими админами)
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Проверяем, существует ли сообщение и получаем данные о чате
+        # Проверяем, существует ли сообщение и получаем данные о чате и авторе
         cur.execute(
             """
-            SELECT m.message_id, m.sender_id, m.chat_id, c.type 
+            SELECT m.message_id, m.sender_id, m.chat_id, c.type, u.is_admin
             FROM messages m
             JOIN chats c ON m.chat_id = c.id
+            JOIN users u ON m.sender_id = u.user_id
             WHERE m.message_id = %s
             """,
             (request.message_id,)
@@ -1094,11 +1101,22 @@ def report_message(
         if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
         
-        message_id, sender_id, chat_id, chat_type = row
+        message_id, sender_id, chat_id, chat_type, sender_is_admin = row
         
         # Для личных чатов - нельзя пожаловаться на себя
         if chat_type == 'private' and sender_id == current_user_id:
             raise HTTPException(status_code=400, detail="Нельзя пожаловаться на своё сообщение")
+        
+        # Нельзя пожаловаться на сообщение админа (если текущий пользователь не админ)
+        if sender_is_admin:
+            # Проверяем, является ли текущий пользователь админом
+            cur.execute("SELECT is_admin FROM users WHERE user_id = %s", (current_user_id,))
+            current_user_is_admin = cur.fetchone()[0]
+            if not current_user_is_admin:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Нельзя пожаловаться на сообщение администратора"
+                )
         
         # Сохраняем жалобу
         cur.execute(
