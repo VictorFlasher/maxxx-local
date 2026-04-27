@@ -106,10 +106,11 @@ async def redis_add_connection(chat_id: int, user_id: int, instance_id: str) -> 
         instance_id: Уникальный ID экземпляра приложения
         
     Returns:
-        True если успешно
+        True если успешно (или если Redis отключён - всегда True)
     """
     if not async_redis_client:
-        return False
+        # Redis отключён - считаем успешным для локальной работы
+        return True
     
     try:
         key = f"ws:chat:{chat_id}"
@@ -175,10 +176,11 @@ async def redis_add_user_online(user_id: int, chat_id: int) -> bool:
         chat_id: ID чата
         
     Returns:
-        True если успешно
+        True если успешно (или если Redis отключён - всегда True)
     """
     if not async_redis_client:
-        return False
+        # Redis отключён - считаем успешным
+        return True
     
     try:
         key = f"online:user:{user_id}"
@@ -199,10 +201,11 @@ async def redis_remove_user_online(user_id: int, chat_id: int) -> bool:
         chat_id: ID чата
         
     Returns:
-        True если успешно
+        True если успешно (или если Redis отключён - всегда True)
     """
     if not async_redis_client:
-        return False
+        # Redis отключён - считаем успешным
+        return True
     
     try:
         key = f"online:user:{user_id}"
@@ -285,7 +288,8 @@ async def redis_check_ws_rate_limit(user_id: int, max_connections: int = 5) -> b
 async def redis_increment_ws_limit(user_id: int) -> bool:
     """Увеличивает счётчик подключений пользователя."""
     if not async_redis_client:
-        return False
+        # Redis отключён - считаем успешным
+        return True
     
     try:
         key = f"ws:limit:{user_id}"
@@ -300,7 +304,8 @@ async def redis_increment_ws_limit(user_id: int) -> bool:
 async def redis_decrement_ws_limit(user_id: int) -> bool:
     """Уменьшает счётчик подключений пользователя."""
     if not async_redis_client:
-        return False
+        # Redis отключён - считаем успешным
+        return True
     
     try:
         key = f"ws:limit:{user_id}"
