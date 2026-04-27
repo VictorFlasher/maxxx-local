@@ -1017,7 +1017,13 @@
             const baseDelay = 1000; // 1 секунда
 
             function connect() {
-                const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`);
+                // Получаем ID последнего прочитанного сообщения для восстановления
+                const lastReadMsgId = unreadLastMessageIds[chatId] || null;
+                const wsUrl = lastReadMsgId 
+                    ? `ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}&last_message_id=${lastReadMsgId}`
+                    : `ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`;
+                
+                const ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
                     console.log(`WS подключён к чату ${chatId}`);
@@ -1137,6 +1143,15 @@
                                     editedMark.style.color = '#888';
                                     messageDiv.appendChild(editedMark);
                                 }
+                            }
+                        }
+                    }
+                    // Обработка удаления сообщения
+                    else if (msg.type === 'message_deleted') {
+                        if (msg.chat_id === currentChatId) {
+                            const messageDiv = document.querySelector(`.message[data-message-id="${msg.message_id}"]`);
+                            if (messageDiv) {
+                                messageDiv.remove();
                             }
                         }
                     }

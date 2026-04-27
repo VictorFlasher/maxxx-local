@@ -379,7 +379,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
 def delete_private_chat(chat_id: int, user_id: int) -> bool:
     """
     Удаляет личный чат. Любой из участников может удалить.
-    Удаляются также все сообщения в этом чате.
+    Сначала удаляет записи из last_read_messages, затем сообщения и сам чат.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -393,11 +393,26 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
         if not row or user_id not in (row[0], row[1]):
             return False
 
-        # Удаляем чат и все сообщения
+        # 1. Сначала удаляем записи из last_read_messages (чтобы избежать нарушения FK)
+        cur.execute("""
+            DELETE FROM last_read_messages 
+            WHERE chat_id = %s OR last_read_message_id IN (
+                SELECT message_id FROM messages WHERE chat_id = %s
+            )
+        """, (chat_id, chat_id))
+        
+        # 2. Удаляем все сообщения в чате
         cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
+        
+        # 3. Удаляем сам чат
         cur.execute("DELETE FROM chats WHERE id = %s", (chat_id,))
+        
         conn.commit()
         return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Ошибка удаления чата {chat_id}: {e}")
+        return False
     finally:
         cur.close()
         release_db_connection(conn)

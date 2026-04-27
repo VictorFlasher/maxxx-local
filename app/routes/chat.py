@@ -957,10 +957,12 @@ def edit_message(
 def delete_message(
     message_id: int,
     current_user_id: int = Depends(get_current_user_from_header),
+    background_tasks: BackgroundTasks = None,
 ):
     """
     Удаляет сообщение.
     Можно удалить только своё сообщение или если пользователь - администратор.
+    После удаления отправляет уведомление всем участникам чата через WebSocket.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -968,7 +970,7 @@ def delete_message(
         # Проверяем, существует ли сообщение и является ли пользователь админом или владельцем
         cur.execute(
             """
-            SELECT sender_id FROM messages WHERE message_id = %s
+            SELECT sender_id, chat_id FROM messages WHERE message_id = %s
             """,
             (message_id,)
         )
@@ -977,7 +979,7 @@ def delete_message(
         if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
         
-        sender_id = row[0]
+        sender_id, chat_id = row[0], row[1]
         
         # Проверяем права (владелец или админ)
         cur.execute("SELECT is_admin FROM users WHERE user_id = %s", (current_user_id,))
@@ -986,9 +988,42 @@ def delete_message(
         if sender_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
         
-        # Удаляем сообщение
+        # Удаляем сообщение из БД
         cur.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
         conn.commit()
+        
+        # Отправляем уведомление всем участникам чата через WebSocket
+        if background_tasks or True:  # Всегда отправляем уведомление
+            from ..models.chat import _get_chat_members
+            members = _get_chat_members(chat_id)
+            # Кэшируем тип чата
+            from ..utils.redis_manager import redis_cache_get, redis_cache_set
+            chat_type_cache_key = f"chat_type:{chat_id}"
+            chat_type_cached = redis_cache_get(chat_type_cache_key)
+            if chat_type_cached:
+                chat_type = chat_type_cached
+            else:
+                from ..models.chat import get_chat_type
+                chat_type = get_chat_type(chat_id)
+                redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+            
+            # Рассылаем обновление
+            import asyncio
+            from fastapi.websockets import WebSocketState
+            global active_connections
+            for user_id in members:
+                ws = active_connections.get(chat_id, {}).get(user_id)
+                if ws and ws.client_state == WebSocketState.CONNECTED:
+                    try:
+                        asyncio.create_task(ws.send_json({
+                            "type": "message_deleted",
+                            "message_id": message_id,
+                            "chat_id": chat_id,
+                            "deleted_by": current_user_id,
+                            "chat_type": chat_type
+                        }))
+                    except Exception:
+                        pass
         
         return {"message": "Сообщение удалено"}
     except HTTPException:
