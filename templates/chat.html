@@ -899,6 +899,7 @@
                 }
 
                 // Подключаемся к WebSocket и сохраняем соединение
+                console.log(`🔌 Открытие чата ${chatId}, подключаем WebSocket...`);
                 connectWebSocket(chatId);
 
                 // Обновляем бейдж непрочитанных (скрываем его)
@@ -1020,20 +1021,25 @@
             function connect() {
                 // Получаем ID последнего прочитанного сообщения для восстановления
                 const lastReadMsgId = unreadLastMessageIds[chatId] || null;
-                const wsUrl = lastReadMsgId 
-                    ? `ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}&last_message_id=${lastReadMsgId}`
-                    : `ws://127.0.0.1:8000/api/ws/${chatId}?token=${token}`;
                 
+                // Используем динамический хост вместо хардкода
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsHost = window.location.host || '127.0.0.1:8000';
+                const wsUrl = lastReadMsgId 
+                    ? `${protocol}//${wsHost}/api/ws/${chatId}?token=${token}&last_message_id=${lastReadMsgId}`
+                    : `${protocol}//${wsHost}/api/ws/${chatId}?token=${token}`;
+                
+                console.log(`Попытка подключения к WebSocket: ${wsUrl}`);
                 const ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
-                    console.log(`WS подключён к чату ${chatId}`);
+                    console.log(`✅ WS подключён к чату ${chatId}`);
                     reconnectAttempts = 0;
                     hideConnectionStatus();
                 };
 
                 ws.onclose = (event) => {
-                    console.log(`WS отключён от чата ${chatId}: ${event.code}`);
+                    console.log(`❌ WS отключён от чата ${chatId}: код ${event.code}, причина: ${event.reason}`);
                     // Удаляем соединение из хранилища при закрытии
                     if (wsConnections[chatId]) {
                         delete wsConnections[chatId];
@@ -1056,7 +1062,8 @@
                 };
 
                 ws.onerror = (err) => {
-                    console.error(`WS ошибка в чате ${chatId}:`, err);
+                    console.error(`⚠️ WS ошибка в чате ${chatId}:`, err);
+                    showConnectionStatus('disconnected', 'Ошибка подключения');
                 };
 
                 ws.onmessage = (event) => {
@@ -1165,8 +1172,9 @@
                     }
                 };
 
-                // Сохраняем соединение в хранилище
+                // Сохраняем соединение в хранилище ДО начала обработки событий
                 wsConnections[chatId] = ws;
+                console.log(`💾 Соединение сохранено в wsConnections[${chatId}]`);
             }
 
             connect();
@@ -1214,11 +1222,24 @@
 
             // Отправляем через WebSocket для текущего чата
             const ws = wsConnections[currentChatId];
+            console.log(`📤 Отправка сообщения в чат ${currentChatId}, ws=${ws ? 'OK' : 'NULL'}, readyState=${ws?.readyState}`);
+            
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ text }));
                 input.value = '';
             } else {
-                alert('Нет подключения к чату');
+                console.error('❌ Нет подключения к чату. Пробуем переподключиться...');
+                // Пытаемся переподключиться
+                connectWebSocket(currentChatId);
+                setTimeout(() => {
+                    const wsRetry = wsConnections[currentChatId];
+                    if (wsRetry && wsRetry.readyState === WebSocket.OPEN) {
+                        wsRetry.send(JSON.stringify({ text }));
+                        input.value = '';
+                    } else {
+                        alert('Нет подключения к чату. Проверьте соединение.');
+                    }
+                }, 1000);
             }
         }
 
