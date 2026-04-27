@@ -133,8 +133,54 @@
     </div>
 
     <script>
+        // Проверка авторизации при загрузке страницы
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/admin/login';
+        } else {
+            // Проверяем, действителен ли токен и является ли пользователь админом
+            fetch('/api/users/status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => {
+                if (!res.ok) throw new Error('Недействительный токен');
+                return res.json();
+            })
+            .then(users => {
+                const isAdmin = users.some(u => u.is_admin);
+                if (!isAdmin) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/admin/login';
+                }
+            })
+            .catch(() => {
+                localStorage.removeItem('token');
+                window.location.href = '/admin/login';
+            });
+        }
+
         let currentReport = null;
         let currentBanUserId = null;
+
+        // Вспомогательная функция для API запросов с токеном
+        async function apiRequest(url, options = {}) {
+            const token = localStorage.getItem('token');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+                'Authorization': `Bearer ${token}`
+            };
+            
+            const response = await fetch(url, { ...options, headers });
+            
+            if (response.status === 403) {
+                alert('Доступ запрещён. Требуется авторизация администратора.');
+                window.location.href = '/admin/login';
+                throw new Error('Forbidden');
+            }
+            
+            return response;
+        }
 
         function showTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -151,7 +197,7 @@
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
         async function loadReports() {
-            const res = await fetch('/api/admin/reports?status=pending');
+            const res = await apiRequest('/api/admin/reports?status=pending');
             const reports = await res.json();
             document.getElementById('reports-count').textContent = reports.length;
             const tbody = document.getElementById('reports-body');
@@ -178,7 +224,7 @@
 
         async function dismissReport() {
             if (!currentReport) return;
-            await fetch('/api/admin/reports/review', {
+            await apiRequest('/api/admin/reports/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ report_id: currentReport.reportId, action: 'dismiss' })
@@ -196,7 +242,7 @@
         }
 
         async function loadBans() {
-            const res = await fetch('/api/admin/bans');
+            const res = await apiRequest('/api/admin/bans');
             const bans = await res.json();
             const tbody = document.getElementById('bans-body');
             tbody.innerHTML = bans.map(b => `
@@ -214,7 +260,7 @@
 
         async function unbanUser(userId) {
             if (!confirm('Разбанить пользователя?')) return;
-            await fetch('/api/admin/unban', {
+            await apiRequest('/api/admin/unban', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId })
@@ -225,7 +271,7 @@
         async function loadHistory() {
             const userId = document.getElementById('history-user-id').value;
             const url = userId ? `/api/admin/ban-history?user_id=${userId}` : '/api/admin/ban-history';
-            const res = await fetch(url);
+            const res = await apiRequest(url);
             const history = await res.json();
             document.getElementById('history-list').innerHTML = history.map(h => `
                 <div class="history-item ${h.action}">
@@ -243,7 +289,7 @@
             if (!reason) { alert('Укажите причину бана'); return; }
             if (!currentBanUserId) return;
             
-            await fetch('/api/admin/ban', {
+            await apiRequest('/api/admin/ban', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: currentBanUserId, reason: reason })
@@ -251,7 +297,7 @@
             closeModal('ban-modal');
             if (currentReport) {
                 // Если бан из жалобы, помечаем её
-                await fetch('/api/admin/reports/review', {
+                await apiRequest('/api/admin/reports/review', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ report_id: currentReport.reportId, action: 'ban', ban_reason: reason })

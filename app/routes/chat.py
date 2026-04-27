@@ -988,6 +988,9 @@ def delete_message(
         if sender_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
         
+        # Сначала удаляем ссылки на сообщение из last_read_messages (чтобы не нарушить FK)
+        cur.execute("DELETE FROM last_read_messages WHERE last_read_message_id = %s", (message_id,))
+        
         # Удаляем сообщение из БД
         cur.execute("DELETE FROM messages WHERE message_id = %s", (message_id,))
         conn.commit()

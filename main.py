@@ -180,6 +180,18 @@ async def chat_page(request: Request, chat_id: int = None):
     return templates.TemplateResponse("chat.html", {"request": request, "chat_id": chat_id})
 
 
+@app.get("/admin/login")
+async def admin_login_page(request: Request):
+    """Страница входа в админ-панель."""
+    return templates.TemplateResponse("admin_login.html", {"request": request})
+
+
+@app.get("/admin")
+async def admin_panel_redirect(request: Request):
+    """Перенаправление на админ-панель (проверка прав происходит на уровне API)."""
+    return templates.TemplateResponse("admin.html", {"request": request, "user_id": None})
+
+
 @app.get("/search-users")
 async def search_users_page(request: Request):
     """Страница поиска пользователей."""

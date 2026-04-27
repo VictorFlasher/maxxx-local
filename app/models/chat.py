@@ -363,6 +363,14 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         
         # Если участников не осталось - удаляем чат и все сообщения
         if remaining_count == 0:
+            # Сначала удаляем записи из last_read_messages (чтобы избежать нарушения FK)
+            cur.execute("""
+                DELETE FROM last_read_messages 
+                WHERE chat_id = %s OR last_read_message_id IN (
+                    SELECT message_id FROM messages WHERE chat_id = %s
+                )
+            """, (chat_id, chat_id))
+            
             cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
             cur.execute("DELETE FROM chats WHERE id = %s", (chat_id,))
         
