@@ -354,6 +354,13 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         if remover_id != owner_id and remover_id != user_id:
             return False
 
+        # Сначала удаляем записи из last_read_messages для этого пользователя и чата
+        # Это нужно сделать ДО удаления участника, чтобы избежать нарушения FK
+        cur.execute("""
+            DELETE FROM last_read_messages 
+            WHERE user_id = %s AND chat_id = %s
+        """, (user_id, chat_id))
+
         # Удаляем участника
         cur.execute("DELETE FROM chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, user_id))
         

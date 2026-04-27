@@ -811,10 +811,14 @@ def get_users_status(
     current_user_id: int = Depends(get_current_user_from_header),
 ):
     """
-    Возвращает словарь {user_id: True/False} для всех пользователей в чатах текущего пользователя.
-    True = онлайн, False = оффлайн.
+    Возвращает список всех пользователей с их статусами (онлайн, админ, забанен).
+    Используется в том числе для проверки прав администратора.
     """
     from ..models.chat import get_chat_members
+    from ..models.user import get_user_by_id
+    
+    # Получаем данные текущего пользователя
+    current_user = get_user_by_id(current_user_id)
     
     # Получаем все чаты пользователя
     user_chats = get_user_chats(current_user_id)
@@ -828,9 +832,33 @@ def get_users_status(
     # Исключаем текущего пользователя
     all_user_ids.discard(current_user_id)
     
-    # Формируем результат
-    status = {user_id: user_id in online_users for user_id in all_user_ids}
-    return {"online_status": status}
+    # Формируем результат с расширенной информацией
+    users_info = []
+    for user_id in all_user_ids:
+        try:
+            user_data = get_user_by_id(user_id)
+            users_info.append({
+                "id": user_data["id"],
+                "username": user_data["username"],
+                "email": user_data["email"],
+                "is_admin": user_data["is_admin"],
+                "is_banned": user_data["is_banned"],
+                "online": user_id in online_users
+            })
+        except ValueError:
+            continue
+    
+    # Добавляем текущего пользователя
+    users_info.append({
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"],
+        "is_admin": current_user["is_admin"],
+        "is_banned": current_user["is_banned"],
+        "online": True
+    })
+    
+    return users_info
 
 
 @router.get("/chats/unread", summary="Получить количество непрочитанных сообщений")
