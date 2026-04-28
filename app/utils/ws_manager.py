@@ -1,5 +1,5 @@
 """
-Модуль для управления состояниями WebSocket и кэшированием в памяти (без Redis).
+Модуль для управления состояниями WebSocket и кэшированием в памяти.
 
 Этот модуль предоставляет:
 - Локальное хранение активных WebSocket-соединений
@@ -7,7 +7,7 @@
 - Механизм rate-limiting для WebSocket подключений
 - Отслеживание онлайн-статусов пользователей
 
-Вместо Redis используется встроенная память Python с асинхронными замками для потокобезопасности.
+Используется только встроенная память Python с асинхронными замками для потокобезопасности.
 """
 
 import json
@@ -41,29 +41,19 @@ cache_lock = asyncio.Lock()
 INSTANCE_ID = f"instance-{id(asyncio.get_event_loop())}"
 
 
-async def init_sync_redis():
-    """Заглушка для совместимости - Redis больше не используется."""
-    logger.info("Redis отключён, используется локальное хранилище в памяти")
+async def init_ws_manager():
+    """Инициализация менеджера WebSocket."""
+    logger.info("Менеджер WebSocket инициализирован (локальное хранилище)")
 
 
-async def init_async_redis():
-    """Заглушка для совместимости - Redis больше не используется."""
-    logger.info("Redis отключён, используется локальное хранилище в памяти")
-
-
-def close_sync_redis():
-    """Заглушка для совместимости - Redis больше не используется."""
-    pass
-
-
-async def close_async_redis():
-    """Заглушка для совместимости - Redis больше не используется."""
-    pass
+async def close_ws_manager():
+    """Очистка ресурсов менеджера WebSocket."""
+    logger.info("Менеджер WebSocket остановлен")
 
 
 # === Управление WebSocket соединениями ===
 
-async def redis_add_connection(chat_id: int, user_id: int, instance_id: str) -> bool:
+async def add_connection(chat_id: int, user_id: int, instance_id: str) -> bool:
     """
     Добавляет WebSocket соединение в локальное хранилище.
     
@@ -80,7 +70,7 @@ async def redis_add_connection(chat_id: int, user_id: int, instance_id: str) -> 
     return True
 
 
-async def redis_remove_connection(chat_id: int, user_id: int) -> bool:
+async def remove_connection(chat_id: int, user_id: int) -> bool:
     """
     Удаляет WebSocket соединение из локального хранилища.
     
@@ -99,7 +89,7 @@ async def redis_remove_connection(chat_id: int, user_id: int) -> bool:
     return True
 
 
-async def redis_get_chat_connections(chat_id: int) -> Dict[str, str]:
+async def get_chat_connections(chat_id: int) -> Dict[str, str]:
     """
     Получает все соединения для чата.
     
@@ -116,7 +106,7 @@ async def redis_get_chat_connections(chat_id: int) -> Dict[str, str]:
 
 # === Управление статусами пользователей ===
 
-async def redis_add_user_online(user_id: int, chat_id: int) -> bool:
+async def add_user_online(user_id: int, chat_id: int) -> bool:
     """
     Добавляет пользователя в список онлайн в чате.
     
@@ -132,7 +122,7 @@ async def redis_add_user_online(user_id: int, chat_id: int) -> bool:
     return True
 
 
-async def redis_remove_user_online(user_id: int, chat_id: int) -> bool:
+async def remove_user_online(user_id: int, chat_id: int) -> bool:
     """
     Удаляет пользователя из списка онлайн в чате.
     
@@ -151,7 +141,7 @@ async def redis_remove_user_online(user_id: int, chat_id: int) -> bool:
     return True
 
 
-async def redis_get_user_online_chats(user_id: int) -> Set[int]:
+async def get_user_online_chats(user_id: int) -> Set[int]:
     """
     Получает список чатов, где пользователь онлайн.
     
@@ -165,7 +155,7 @@ async def redis_get_user_online_chats(user_id: int) -> Set[int]:
         return online_users.get(user_id, set()).copy()
 
 
-async def redis_is_user_online(user_id: int) -> bool:
+async def is_user_online(user_id: int) -> bool:
     """
     Проверяет, онлайн ли пользователь (есть ли активные чаты).
     
@@ -175,13 +165,13 @@ async def redis_is_user_online(user_id: int) -> bool:
     Returns:
         True если онлайн
     """
-    chats = await redis_get_user_online_chats(user_id)
+    chats = await get_user_online_chats(user_id)
     return len(chats) > 0
 
 
 # === Rate Limiting для WebSocket ===
 
-async def redis_check_ws_rate_limit(user_id: int, max_connections: int = 5) -> bool:
+async def check_ws_rate_limit(user_id: int, max_connections: int = 5) -> bool:
     """
     Проверяет лимит подключений для пользователя.
     
@@ -212,7 +202,7 @@ async def redis_check_ws_rate_limit(user_id: int, max_connections: int = 5) -> b
         return True
 
 
-async def redis_increment_ws_limit(user_id: int) -> bool:
+async def increment_ws_limit(user_id: int) -> bool:
     """Увеличивает счётчик подключений пользователя."""
     now = datetime.now(timezone.utc)
     async with rate_limit_lock:
@@ -224,7 +214,7 @@ async def redis_increment_ws_limit(user_id: int) -> bool:
     return True
 
 
-async def redis_decrement_ws_limit(user_id: int) -> bool:
+async def decrement_ws_limit(user_id: int) -> bool:
     """Уменьшает счётчик подключений пользователя."""
     async with rate_limit_lock:
         if user_id in rate_limits and rate_limits[user_id]["count"] > 0:
@@ -234,7 +224,7 @@ async def redis_decrement_ws_limit(user_id: int) -> bool:
 
 # === Кэширование данных ===
 
-async def redis_cache_set(key: str, value: Any, ttl: int = 300) -> bool:
+async def cache_set(key: str, value: Any, ttl: int = 300) -> bool:
     """
     Сохраняет значение в локальный кэш.
     
@@ -252,7 +242,7 @@ async def redis_cache_set(key: str, value: Any, ttl: int = 300) -> bool:
     return True
 
 
-async def redis_cache_get(key: str) -> Optional[Any]:
+async def cache_get(key: str) -> Optional[Any]:
     """
     Получает значение из локального кэша.
     
@@ -274,7 +264,7 @@ async def redis_cache_get(key: str) -> Optional[Any]:
         return entry["value"]
 
 
-async def redis_cache_delete(key: str) -> bool:
+async def cache_delete(key: str) -> bool:
     """Удаляет значение из кэша."""
     async with cache_lock:
         if key in cache:

@@ -16,7 +16,7 @@ from logging.handlers import RotatingFileHandler
 from app.routes import auth, config, chat, admin
 from app.routes.auth import limiter  # Импортируем экземпляр лимитера
 from app.database import init_db_pool  # Импорт функции инициализации пула БД
-from app.utils import init_async_redis, close_async_redis, init_sync_redis, close_sync_redis
+from app.utils import init_ws_manager, close_ws_manager
 
 # === Настройка логирования в файл ===
 def setup_logging():
@@ -66,24 +66,20 @@ app = FastAPI(
 # init_db_pool(minconn=2, maxconn=10)
 
 # Инициализация Redis при старте приложения (отложено до startup) - теперь заглушка, используется локальное хранилище
-# init_sync_redis()
 
 @app.on_event("startup")
 async def startup_event():
     """Инициализация асинхронных сервисов при старте."""
     # Инициализация пула БД
     init_db_pool(minconn=2, maxconn=10)
-    # Инициализация синхронного Redis (заглушка - используется локальное хранилище)
-    init_sync_redis()
-    # Инициализация асинхронного Redis (заглушка - используется локальное хранилище)
-    await init_async_redis()
+    # Инициализация менеджера WebSocket (локальное хранилище)
+    await init_ws_manager()
     logger.info("Приложение запущено")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Очистка ресурсов при остановке приложения."""
-    await close_async_redis()
-    close_sync_redis()
+    await close_ws_manager()
     logger.info("Приложение остановлено")
 
 # === Middleware для безопасности HTTP заголовков (защита от MitM, XSS, Clickjacking) ===

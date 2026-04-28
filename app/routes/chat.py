@@ -121,18 +121,18 @@ from ..models.chat import (
     get_chat_type,
 )
 from ..models.user import get_username, get_all_users, search_users
-from ..utils.redis_manager import (
-    redis_add_connection,
-    redis_remove_connection,
-    redis_add_user_online,
-    redis_remove_user_online,
-    redis_get_user_online_chats,
-    redis_is_user_online,
-    redis_check_ws_rate_limit,
-    redis_increment_ws_limit,
-    redis_decrement_ws_limit,
-    redis_cache_set,
-    redis_cache_get,
+from ..utils.ws_manager import (
+    add_connection,
+    remove_connection,
+    add_user_online,
+    remove_user_online,
+    get_user_online_chats,
+    is_user_online,
+    check_ws_rate_limit,
+    increment_ws_limit,
+    decrement_ws_limit,
+    cache_set,
+    cache_get,
     get_instance_id,
 )
 
@@ -327,25 +327,25 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
 
     # 2. Уведомляем через WebSocket с кэшированием
     # Кэшируем тип чата
-    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    from ..utils.ws_manager import cache_get, cache_set
     chat_type_cache_key = f"chat_type:{chat_id}"
-    chat_type_cached = await redis_cache_get(chat_type_cache_key)
+    chat_type_cached = await cache_get(chat_type_cache_key)
     if chat_type_cached:
         chat_type = chat_type_cached
     else:
         chat_type = get_chat_type(chat_id)
-        await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+        await cache_set(chat_type_cache_key, chat_type, ttl=600)
     
     sender_username = None
     if chat_type == "group":
         # Кэшируем username
         cache_key = f"username:{user_id}"
-        cached = await redis_cache_get(cache_key)
+        cached = await cache_get(cache_key)
         if cached:
             sender_username = cached
         else:
             sender_username = get_username(user_id)
-            await redis_cache_set(cache_key, sender_username, ttl=600)
+            await cache_set(cache_key, sender_username, ttl=600)
 
     await _notify_users(
         chat_id,
@@ -388,7 +388,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
         return
 
     # === Rate Limiting: проверка лимита подключений ===
-    if not await redis_check_ws_rate_limit(user_id, max_connections=5):
+    if not await check_ws_rate_limit(user_id, max_connections=5):
         await websocket.close(code=4004, reason="Превышен лимит подключений")
         return
 
@@ -397,8 +397,8 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
     logger.info(f"WebSocket подключён: user_id={user_id}, chat_id={chat_id}")
 
     # === Добавляем соединение в Redis и локальный кэш ===
-    await redis_add_connection(chat_id, user_id, INSTANCE_ID)
-    await redis_increment_ws_limit(user_id)
+    await add_connection(chat_id, user_id, INSTANCE_ID)
+    await increment_ws_limit(user_id)
     
     # Локальный кэш (для текущего инстанса)
     if user_id not in online_users:
@@ -410,7 +410,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
     active_connections[chat_id][user_id] = websocket
 
     # === Добавляем пользователя в онлайн в Redis ===
-    await redis_add_user_online(user_id, chat_id)
+    await add_user_online(user_id, chat_id)
 
     # Логируем событие подключения WebSocket
     try:
@@ -437,23 +437,23 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                     msg_id, sender_id, text, file_path, created_at = msg
                     # Кэшируем тип чата
                     chat_type_cache_key = f"chat_type:{chat_id}"
-                    chat_type_cached = await redis_cache_get(chat_type_cache_key)
+                    chat_type_cached = await cache_get(chat_type_cache_key)
                     if chat_type_cached:
                         chat_type = chat_type_cached
                     else:
                         chat_type = get_chat_type(chat_id)
-                        await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+                        await cache_set(chat_type_cache_key, chat_type, ttl=600)
                     
                     sender_username = None
                     if chat_type == "group":
                         # Используем кэширование
                         cache_key = f"username:{sender_id}"
-                        cached = await redis_cache_get(cache_key)
+                        cached = await cache_get(cache_key)
                         if cached:
                             sender_username = cached
                         else:
                             sender_username = get_username(sender_id)
-                            await redis_cache_set(cache_key, sender_username, ttl=600)
+                            await cache_set(cache_key, sender_username, ttl=600)
                     
                     await websocket.send_json({
                         "type": "message",
@@ -504,23 +504,23 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                 # === 2. Готовим данные для рассылки с кэшированием ===
                 # Кэшируем тип чата
                 chat_type_cache_key = f"chat_type:{chat_id}"
-                chat_type_cached = await redis_cache_get(chat_type_cache_key)
+                chat_type_cached = await cache_get(chat_type_cache_key)
                 if chat_type_cached:
                     chat_type = chat_type_cached
                 else:
                     chat_type = get_chat_type(chat_id)
-                    await redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+                    await cache_set(chat_type_cache_key, chat_type, ttl=600)
                 
                 sender_username = None
                 if chat_type == "group":
                     # Кэшируем username
                     cache_key = f"username:{user_id}"
-                    cached = await redis_cache_get(cache_key)
+                    cached = await cache_get(cache_key)
                     if cached:
                         sender_username = cached
                     else:
                         sender_username = get_username(user_id)
-                        await redis_cache_set(cache_key, sender_username, ttl=600)
+                        await cache_set(cache_key, sender_username, ttl=600)
 
                 # === 3. Рассылаем сообщение ===
                 await _notify_users(
@@ -554,9 +554,9 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             logger.error(f"Ошибка логирования disconnect: {str(e)}")
         
         # === Удаляем соединение из Redis и локального кэша ===
-        await redis_remove_connection(chat_id, user_id)
-        await redis_decrement_ws_limit(user_id)
-        await redis_remove_user_online(user_id, chat_id)
+        await remove_connection(chat_id, user_id)
+        await decrement_ws_limit(user_id)
+        await remove_user_online(user_id, chat_id)
         
         # Локальный кэш
         active_connections.get(chat_id, {}).pop(user_id, None)
@@ -568,7 +568,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             if len(online_users[user_id]) == 0:
                 del online_users[user_id]
                 # Проверяем через Redis перед уведомлением об оффлайне
-                is_online = await redis_is_user_online(user_id)
+                is_online = await is_user_online(user_id)
                 if not is_online:
                     # Уведомляем об оффлайне только если пользователь полностью оффлайн
                     await _broadcast_status_to_all_chats(user_id, "offline")
@@ -930,26 +930,26 @@ def edit_message(
         from ..models.chat import _get_chat_members
         members = _get_chat_members(chat_id)
         # Кэшируем тип чата и username
-        from ..utils.redis_manager import redis_cache_get, redis_cache_set
+        from ..utils.ws_manager import cache_get, cache_set
         chat_type_cache_key = f"chat_type:{chat_id}"
-        chat_type_cached = redis_cache_get(chat_type_cache_key)
+        chat_type_cached = cache_get(chat_type_cache_key)
         if chat_type_cached:
             chat_type = chat_type_cached
         else:
             from ..models.chat import get_chat_type
             chat_type = get_chat_type(chat_id)
-            redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+            cache_set(chat_type_cache_key, chat_type, ttl=600)
         
         sender_username = None
         if chat_type == "group":
             cache_key = f"username:{sender_id}"
-            cached = redis_cache_get(cache_key)
+            cached = cache_get(cache_key)
             if cached:
                 sender_username = cached
             else:
                 from ..models.user import get_username
                 sender_username = get_username(sender_id)
-                redis_cache_set(cache_key, sender_username, ttl=600)
+                cache_set(cache_key, sender_username, ttl=600)
         
         # Рассылаем обновление
         import asyncio
@@ -1026,15 +1026,15 @@ def delete_message(
         from ..models.chat import _get_chat_members
         members = _get_chat_members(chat_id)
         # Кэшируем тип чата и username
-        from ..utils.redis_manager import redis_cache_get, redis_cache_set
+        from ..utils.ws_manager import cache_get, cache_set
         chat_type_cache_key = f"chat_type:{chat_id}"
-        chat_type_cached = redis_cache_get(chat_type_cache_key)
+        chat_type_cached = cache_get(chat_type_cache_key)
         if chat_type_cached:
             chat_type = chat_type_cached
         else:
             from ..models.chat import get_chat_type
             chat_type = get_chat_type(chat_id)
-            redis_cache_set(chat_type_cache_key, chat_type, ttl=600)
+            cache_set(chat_type_cache_key, chat_type, ttl=600)
         
         # Рассылаем обновление
         import asyncio

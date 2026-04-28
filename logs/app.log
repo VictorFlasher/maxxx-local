@@ -483,3 +483,11 @@ DETAIL:  Ошибочная строка содержит (119, 1, websocket_dis
 2026-04-28 04:46:07 - root - INFO - Логирование инициализировано
 2026-04-28 04:46:37 - root - INFO - Логирование инициализировано
 2026-04-28 04:46:56 - root - INFO - Логирование инициализировано
+2026-04-28 04:59:07 - root - INFO - Логирование инициализировано
+2026-04-28 05:04:54 - root - INFO - Логирование инициализировано
+2026-04-28 05:05:18 - root - INFO - Логирование инициализировано
+2026-04-28 05:05:18 - app.database - ERROR - Ошибка инициализации пула соединений: connection to server at "localhost" (::1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+
