@@ -498,3 +498,52 @@ connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection re
 2026-04-28 10:50:37 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
 2026-04-28 10:51:44 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
 2026-04-28 10:52:06 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 10:54:58 - app.utils.ws_manager - INFO - Менеджер WebSocket остановлен
+2026-04-28 10:54:58 - main - INFO - Приложение остановлено
+2026-04-28 10:58:40 - root - INFO - Логирование инициализировано
+2026-04-28 10:58:41 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-28 10:58:41 - app.utils.ws_manager - INFO - Менеджер WebSocket инициализирован (локальное хранилище)
+2026-04-28 10:58:41 - main - INFO - Приложение запущено
+2026-04-28 10:58:50 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
+2026-04-28 11:07:07 - root - INFO - Логирование инициализировано
+2026-04-28 11:07:07 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-28 11:07:07 - app.utils.ws_manager - INFO - Менеджер WebSocket инициализирован (локальное хранилище)
+2026-04-28 11:07:07 - main - INFO - Приложение запущено
+2026-04-28 11:07:18 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
+2026-04-28 11:07:20 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:33 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 11:07:45 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=12
+2026-04-28 11:07:52 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:54 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:55 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:55 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:57 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:07:57 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:08:06 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=13
+2026-04-28 11:08:32 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:08:37 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:08:49 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:08:51 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:08:56 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:09:08 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 11:09:19 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
+2026-04-28 11:09:20 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=14
+2026-04-28 11:09:29 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=14
+2026-04-28 11:09:42 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=14
+2026-04-28 11:09:55 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:09:57 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=12
+2026-04-28 11:10:58 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 11:19:14 - app.utils.ws_manager - INFO - Менеджер WebSocket остановлен
+2026-04-28 11:19:14 - main - INFO - Приложение остановлено
+2026-04-28 11:19:18 - root - INFO - Логирование инициализировано
+2026-04-28 11:19:18 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-28 11:19:18 - app.utils.ws_manager - INFO - Менеджер WebSocket инициализирован (локальное хранилище)
+2026-04-28 11:19:18 - main - INFO - Приложение запущено
+2026-04-28 11:19:31 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
+2026-04-28 11:19:37 - app.routes.chat - INFO - WebSocket подключён: user_id=2, chat_id=14
+2026-04-28 11:20:05 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 11:20:08 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:20:27 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
+2026-04-28 11:22:45 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 11:27:31 - app.utils.ws_manager - INFO - Менеджер WebSocket остановлен
+2026-04-28 11:27:31 - main - INFO - Приложение остановлено
