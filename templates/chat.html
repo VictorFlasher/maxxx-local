@@ -521,6 +521,7 @@
         let allChats = [];
         const unreadCounts = {};
         const onlineStatus = {}; // {user_id: true/false}
+        const unreadLastMessageIds = {}; // {chat_id: last_message_id}
 
         async function loadOnlineStatus() {
             try {
