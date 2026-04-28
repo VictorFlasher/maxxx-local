@@ -207,7 +207,7 @@ def get_username(user_id: int) -> str:
 
 def get_username_cached(user_id: int) -> str:
     """
-    Возвращает username по ID с кэшированием в Redis.
+    Возвращает username по ID с кэшированием.
     
     Args:
         user_id: ID пользователя
@@ -215,12 +215,12 @@ def get_username_cached(user_id: int) -> str:
     Returns:
         Username или 'Пользователь {user_id}' если не найден
     """
-    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    from ..utils.ws_manager import cache_get, cache_set
     
     cache_key = f"username:{user_id}"
     
     # Проверяем кэш
-    cached = redis_cache_get(cache_key)
+    cached = cache_get(cache_key)
     if cached is not None:
         return cached
     
@@ -228,7 +228,7 @@ def get_username_cached(user_id: int) -> str:
     username = get_username(user_id)
     
     # Сохраняем в кэш
-    redis_cache_set(cache_key, username, ttl=600)
+    cache_set(cache_key, username, ttl=600)
     
     return username
 

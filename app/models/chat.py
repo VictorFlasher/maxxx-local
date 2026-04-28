@@ -447,7 +447,7 @@ def get_chat_type(chat_id: int) -> str:
 
 def get_chat_type_cached(chat_id: int) -> Optional[str]:
     """
-    Возвращает тип чата с кэшированием в Redis.
+    Возвращает тип чата с кэшированием.
 
     Args:
         chat_id: ID чата
@@ -455,12 +455,12 @@ def get_chat_type_cached(chat_id: int) -> Optional[str]:
     Returns:
         Тип чата ('private' или 'group') или None если не найден
     """
-    from ..utils.redis_manager import redis_cache_get, redis_cache_set
+    from ..utils.ws_manager import cache_get, cache_set
 
     cache_key = f"chat_type:{chat_id}"
 
     # Проверяем кэш
-    cached = redis_cache_get(cache_key)
+    cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
@@ -469,7 +469,7 @@ def get_chat_type_cached(chat_id: int) -> Optional[str]:
 
     # Сохраняем в кэш
     if chat_type:
-        redis_cache_set(cache_key, chat_type, ttl=600)
+        cache_set(cache_key, chat_type, ttl=600)
 
     return chat_type
 
