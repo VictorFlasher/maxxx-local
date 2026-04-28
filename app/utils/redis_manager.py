@@ -1,104 +1,71 @@
 """
-Модуль для работы с Redis: распределённое хранилище состояний WebSocket и кэширование.
+Модуль для управления состояниями WebSocket и кэшированием в памяти (без Redis).
 
 Этот модуль предоставляет:
-- Подключение к Redis для распределённого хранения состояний
-- Управление активными WebSocket-соединениями across multiple instances
-- Кэширование часто запрашиваемых данных
+- Локальное хранение активных WebSocket-соединений
+- Кэширование часто запрашиваемых данных в памяти
 - Механизм rate-limiting для WebSocket подключений
+- Отслеживание онлайн-статусов пользователей
+
+Вместо Redis используется встроенная память Python с асинхронными замками для потокобезопасности.
 """
 
 import json
 import logging
-import os
+import asyncio
 from typing import Optional, Dict, Any, List, Set
 from datetime import datetime, timezone
-import redis.asyncio as aioredis
-from redis import Redis
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-# === Конфигурация Redis ===
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
-REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+# === Глобальные хранилища в памяти ===
 
-# === Синхронный клиент Redis (для не-async кода) ===
-sync_redis_client: Optional[Redis] = None
+# Хранилище WebSocket соединений: {chat_id: {user_id: instance_id}}
+ws_connections: Dict[int, Dict[int, str]] = defaultdict(dict)
+ws_lock = asyncio.Lock()
 
-# === Асинхронный клиент Redis (для async кода) ===
-async_redis_client: Optional[aioredis.Redis] = None
+# Хранилище онлайн пользователей: {user_id: set of chat_ids}
+online_users: Dict[int, Set[int]] = defaultdict(set)
+online_lock = asyncio.Lock()
+
+# Rate limiting: {user_id: {"count": int, "reset_at": datetime}}
+rate_limits: Dict[int, Dict[str, Any]] = {}
+rate_limit_lock = asyncio.Lock()
+
+# Кэш данных: {key: {"value": Any, "expires_at": datetime}}
+cache: Dict[str, Dict[str, Any]] = {}
+cache_lock = asyncio.Lock()
+
+# Уникальный ID экземпляра приложения
+INSTANCE_ID = f"instance-{id(asyncio.get_event_loop())}"
 
 
-def init_sync_redis():
-    """Инициализирует синхронный Redis клиент."""
-    global sync_redis_client
-    if not REDIS_ENABLED:
-        logger.info("Redis отключён (REDIS_ENABLED=false)")
-        return
-    
-    try:
-        sync_redis_client = Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            password=REDIS_PASSWORD,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
-        )
-        # Проверка подключения
-        sync_redis_client.ping()
-        logger.info(f"Redis подключён: {REDIS_HOST}:{REDIS_PORT}")
-    except Exception as e:
-        logger.error(f"Ошибка подключения к Redis (sync): {e}")
-        sync_redis_client = None
+async def init_sync_redis():
+    """Заглушка для совместимости - Redis больше не используется."""
+    logger.info("Redis отключён, используется локальное хранилище в памяти")
 
 
 async def init_async_redis():
-    """Инициализирует асинхронный Redis клиент."""
-    global async_redis_client
-    if not REDIS_ENABLED:
-        return
-    
-    try:
-        async_redis_client = await aioredis.from_url(
-            f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
-            password=REDIS_PASSWORD,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
-        )
-        await async_redis_client.ping()
-        logger.info(f"Redis подключён (async): {REDIS_HOST}:{REDIS_PORT}")
-    except Exception as e:
-        logger.error(f"Ошибка подключения к Redis (async): {e}")
-        async_redis_client = None
+    """Заглушка для совместимости - Redis больше не используется."""
+    logger.info("Redis отключён, используется локальное хранилище в памяти")
 
 
 def close_sync_redis():
-    """Закрывает синхронное соединение с Redis."""
-    global sync_redis_client
-    if sync_redis_client:
-        sync_redis_client.close()
-        sync_redis_client = None
+    """Заглушка для совместимости - Redis больше не используется."""
+    pass
 
 
 async def close_async_redis():
-    """Закрывает асинхронное соединение с Redis."""
-    global async_redis_client
-    if async_redis_client:
-        await async_redis_client.close()
-        async_redis_client = None
+    """Заглушка для совместимости - Redis больше не используется."""
+    pass
 
 
-# === Управление WebSocket соединениями через Redis ===
+# === Управление WebSocket соединениями ===
 
 async def redis_add_connection(chat_id: int, user_id: int, instance_id: str) -> bool:
     """
-    Добавляет WebSocket соединение в Redis.
+    Добавляет WebSocket соединение в локальное хранилище.
     
     Args:
         chat_id: ID чата
@@ -106,25 +73,16 @@ async def redis_add_connection(chat_id: int, user_id: int, instance_id: str) -> 
         instance_id: Уникальный ID экземпляра приложения
         
     Returns:
-        True если успешно (или если Redis отключён - всегда True)
+        True если успешно
     """
-    if not async_redis_client:
-        # Redis отключён - считаем успешным для локальной работы
-        return True
-    
-    try:
-        key = f"ws:chat:{chat_id}"
-        await async_redis_client.hset(key, str(user_id), instance_id)
-        await async_redis_client.expire(key, 3600)  # TTL 1 час
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка добавления соединения в Redis: {e}")
-        return False
+    async with ws_lock:
+        ws_connections[chat_id][user_id] = instance_id
+    return True
 
 
 async def redis_remove_connection(chat_id: int, user_id: int) -> bool:
     """
-    Удаляет WebSocket соединение из Redis.
+    Удаляет WebSocket соединение из локального хранилища.
     
     Args:
         chat_id: ID чата
@@ -133,21 +91,17 @@ async def redis_remove_connection(chat_id: int, user_id: int) -> bool:
     Returns:
         True если успешно
     """
-    if not async_redis_client:
-        return False
-    
-    try:
-        key = f"ws:chat:{chat_id}"
-        await async_redis_client.hdel(key, str(user_id))
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка удаления соединения из Redis: {e}")
-        return False
+    async with ws_lock:
+        if chat_id in ws_connections and user_id in ws_connections[chat_id]:
+            del ws_connections[chat_id][user_id]
+            if not ws_connections[chat_id]:
+                del ws_connections[chat_id]
+    return True
 
 
 async def redis_get_chat_connections(chat_id: int) -> Dict[str, str]:
     """
-    Получает все соединения для чата из Redis.
+    Получает все соединения для чата.
     
     Args:
         chat_id: ID чата
@@ -155,17 +109,12 @@ async def redis_get_chat_connections(chat_id: int) -> Dict[str, str]:
     Returns:
         Dict {user_id: instance_id}
     """
-    if not async_redis_client:
-        return {}
-    
-    try:
-        key = f"ws:chat:{chat_id}"
-        result = await async_redis_client.hgetall(key)
-        return result or {}
-    except Exception as e:
-        logger.error(f"Ошибка получения соединений из Redis: {e}")
-        return {}
+    async with ws_lock:
+        connections = ws_connections.get(chat_id, {})
+        return {str(k): v for k, v in connections.items()}
 
+
+# === Управление статусами пользователей ===
 
 async def redis_add_user_online(user_id: int, chat_id: int) -> bool:
     """
@@ -176,20 +125,11 @@ async def redis_add_user_online(user_id: int, chat_id: int) -> bool:
         chat_id: ID чата
         
     Returns:
-        True если успешно (или если Redis отключён - всегда True)
+        True если успешно
     """
-    if not async_redis_client:
-        # Redis отключён - считаем успешным
-        return True
-    
-    try:
-        key = f"online:user:{user_id}"
-        await async_redis_client.sadd(key, str(chat_id))
-        await async_redis_client.expire(key, 3600)
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка добавления пользователя в онлайн: {e}")
-        return False
+    async with online_lock:
+        online_users[user_id].add(chat_id)
+    return True
 
 
 async def redis_remove_user_online(user_id: int, chat_id: int) -> bool:
@@ -201,19 +141,14 @@ async def redis_remove_user_online(user_id: int, chat_id: int) -> bool:
         chat_id: ID чата
         
     Returns:
-        True если успешно (или если Redis отключён - всегда True)
+        True если успешно
     """
-    if not async_redis_client:
-        # Redis отключён - считаем успешным
-        return True
-    
-    try:
-        key = f"online:user:{user_id}"
-        await async_redis_client.srem(key, str(chat_id))
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка удаления пользователя из онлайн: {e}")
-        return False
+    async with online_lock:
+        if user_id in online_users:
+            online_users[user_id].discard(chat_id)
+            if not online_users[user_id]:
+                del online_users[user_id]
+    return True
 
 
 async def redis_get_user_online_chats(user_id: int) -> Set[int]:
@@ -226,16 +161,8 @@ async def redis_get_user_online_chats(user_id: int) -> Set[int]:
     Returns:
         Set of chat_ids
     """
-    if not async_redis_client:
-        return set()
-    
-    try:
-        key = f"online:user:{user_id}"
-        result = await async_redis_client.smembers(key)
-        return {int(c) for c in result} if result else set()
-    except Exception as e:
-        logger.error(f"Ошибка получения онлайн чатов пользователя: {e}")
-        return set()
+    async with online_lock:
+        return online_users.get(user_id, set()).copy()
 
 
 async def redis_is_user_online(user_id: int) -> bool:
@@ -265,121 +192,96 @@ async def redis_check_ws_rate_limit(user_id: int, max_connections: int = 5) -> b
     Returns:
         True если можно подключиться
     """
-    if not async_redis_client:
-        return True  # Если Redis отключён, пропускаем проверку
-    
-    try:
-        key = f"ws:limit:{user_id}"
-        current = await async_redis_client.get(key)
-        if current is None:
-            await async_redis_client.setex(key, 60, "1")
+    now = datetime.now(timezone.utc)
+    async with rate_limit_lock:
+        if user_id not in rate_limits:
+            rate_limits[user_id] = {"count": 1, "reset_at": now}
             return True
         
-        if int(current) >= max_connections:
+        limit_info = rate_limits[user_id]
+        
+        # Сброс счётчика если прошла минута
+        if now >= limit_info["reset_at"]:
+            rate_limits[user_id] = {"count": 1, "reset_at": now}
+            return True
+        
+        if limit_info["count"] >= max_connections:
             return False
         
-        await async_redis_client.incr(key)
+        rate_limits[user_id]["count"] += 1
         return True
-    except Exception as e:
-        logger.error(f"Ошибка проверки rate limit: {e}")
-        return True  # В случае ошибки разрешаем подключение
 
 
 async def redis_increment_ws_limit(user_id: int) -> bool:
     """Увеличивает счётчик подключений пользователя."""
-    if not async_redis_client:
-        # Redis отключён - считаем успешным
-        return True
-    
-    try:
-        key = f"ws:limit:{user_id}"
-        await async_redis_client.incr(key)
-        await async_redis_client.expire(key, 60)
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка увеличения счётчика WS: {e}")
-        return False
+    now = datetime.now(timezone.utc)
+    async with rate_limit_lock:
+        if user_id not in rate_limits:
+            rate_limits[user_id] = {"count": 1, "reset_at": now}
+        else:
+            rate_limits[user_id]["count"] += 1
+            rate_limits[user_id]["reset_at"] = now
+    return True
 
 
 async def redis_decrement_ws_limit(user_id: int) -> bool:
     """Уменьшает счётчик подключений пользователя."""
-    if not async_redis_client:
-        # Redis отключён - считаем успешным
-        return True
-    
-    try:
-        key = f"ws:limit:{user_id}"
-        await async_redis_client.decr(key)
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка уменьшения счётчика WS: {e}")
-        return False
+    async with rate_limit_lock:
+        if user_id in rate_limits and rate_limits[user_id]["count"] > 0:
+            rate_limits[user_id]["count"] -= 1
+    return True
 
 
 # === Кэширование данных ===
 
 async def redis_cache_set(key: str, value: Any, ttl: int = 300) -> bool:
     """
-    Сохраняет значение в кэш Redis.
+    Сохраняет значение в локальный кэш.
     
     Args:
         key: Ключ кэша
-        value: Значение (будет сериализовано в JSON)
+        value: Значение
         ttl: Время жизни в секундах
         
     Returns:
         True если успешно
     """
-    if not async_redis_client:
-        return False
-    
-    try:
-        await async_redis_client.setex(key, ttl, json.dumps(value))
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка записи в кэш Redis: {e}")
-        return False
+    expires_at = datetime.now(timezone.utc).timestamp() + ttl
+    async with cache_lock:
+        cache[key] = {"value": value, "expires_at": expires_at}
+    return True
 
 
 async def redis_cache_get(key: str) -> Optional[Any]:
     """
-    Получает значение из кэша Redis.
+    Получает значение из локального кэша.
     
     Args:
         key: Ключ кэша
         
     Returns:
-        Значение или None если не найдено
+        Значение или None если не найдено или истёк срок
     """
-    if not async_redis_client:
-        return None
-    
-    try:
-        data = await async_redis_client.get(key)
-        if data:
-            return json.loads(data)
-        return None
-    except Exception as e:
-        logger.error(f"Ошибка чтения из кэша Redis: {e}")
-        return None
+    async with cache_lock:
+        if key not in cache:
+            return None
+        
+        entry = cache[key]
+        if datetime.now(timezone.utc).timestamp() >= entry["expires_at"]:
+            del cache[key]
+            return None
+        
+        return entry["value"]
 
 
 async def redis_cache_delete(key: str) -> bool:
     """Удаляет значение из кэша."""
-    if not async_redis_client:
-        return False
-    
-    try:
-        await async_redis_client.delete(key)
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка удаления из кэша Redis: {e}")
-        return False
+    async with cache_lock:
+        if key in cache:
+            del cache[key]
+    return True
 
-
-# === Утилиты для работы с инстансами ===
 
 def get_instance_id() -> str:
     """Возвращает уникальный ID текущего экземпляра приложения."""
-    import os
-    return os.getenv("INSTANCE_ID", f"instance-{os.getpid()}")
+    return INSTANCE_ID

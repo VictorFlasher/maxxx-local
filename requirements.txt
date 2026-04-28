@@ -8,4 +8,3 @@ jinja2
 slowapi
 defusedxml
 redis
-aioredis
