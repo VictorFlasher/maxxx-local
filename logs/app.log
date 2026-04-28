@@ -491,3 +491,10 @@ DETAIL:  Ошибочная строка содержит (119, 1, websocket_dis
 connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
 	Is the server running on that host and accepting TCP/IP connections?
 
+2026-04-28 10:49:56 - root - INFO - Логирование инициализировано
+2026-04-28 10:49:57 - app.database - INFO - Пул соединений к БД инициализирован (min=2, max=10)
+2026-04-28 10:49:57 - app.utils.ws_manager - INFO - Менеджер WebSocket инициализирован (локальное хранилище)
+2026-04-28 10:49:57 - main - INFO - Приложение запущено
+2026-04-28 10:50:37 - app.routes.auth - INFO - Успешный вход пользователя: test@example.com (ID: 2)
+2026-04-28 10:51:44 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
+2026-04-28 10:52:06 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
