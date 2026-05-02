@@ -269,16 +269,24 @@ def get_current_user(token: str) -> int:
     Проверяет срок действия токена и другие claims.
     Выбрасывает ValueError при ошибке — обрабатывается вручную.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info(f"get_current_user: декодирование токена с SECRET_KEY={SECRET_KEY[:8]}...")
         # jwt.decode автоматически проверяет exp и другие стандартные claims
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("user_id")
+        logger.info(f"get_current_user: payload={payload}, user_id={user_id}")
         if user_id is None:
             raise ValueError("Нет user_id в токене")
         return int(user_id)
     except jwt.ExpiredSignatureError:
+        logger.warning("get_current_user: срок действия токена истёк")
         raise ValueError("Срок действия токена истёк")
     except jwt.JWTClaimsError as e:
+        logger.warning(f"get_current_user: ошибка claims токена - {str(e)}")
         raise ValueError(f"Ошибка claims токена: {str(e)}")
     except Exception as e:
-        raise ValueError("Неверный токен") from e
+        logger.error(f"get_current_user: непредвиденная ошибка - {type(e).__name__}: {str(e)}")
+        raise ValueError(f"Неверный токен: {type(e).__name__}: {str(e)}") from e
