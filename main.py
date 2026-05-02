@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -10,77 +11,32 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-import os
-from logging.handlers import RotatingFileHandler
 
 from app.routes import auth, config, chat, admin
 from app.routes.auth import limiter  # Импортируем экземпляр лимитера
 from app.database import init_db_pool  # Импорт функции инициализации пула БД
 from app.utils import init_ws_manager, close_ws_manager
 
-# === Настройка логирования в файл ===
-def setup_logging():
-    """Настраивает логирование в файл и консоль."""
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
 
-    # Создаём корневой логгер
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Управление жизненным циклом приложения."""
+    # Startup
+    init_db_pool(minconn=2, maxconn=10)
+    await init_ws_manager()
+    logging.info("Приложение запущено")
+    yield
+    # Shutdown
+    await close_ws_manager()
+    logging.info("Приложение остановлено")
 
-    # Форматтер
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    # Обработчик для файла с ротацией
-    file_handler = RotatingFileHandler(
-        f"{log_dir}/app.log",
-        maxBytes=10*1024*1024,  # 10 MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-
-    # Консольный обработчик
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
-    root_logger.addHandler(console_handler)
-
-    logging.info("Логирование инициализировано")
-
-setup_logging()
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Maxxx-Local Chat API",
     description="Безопасный многопользовательский чат",
     version="1.0.0",
+    lifespan=lifespan,
 )
-
-# Инициализация пула соединений с БД при старте приложения (отложено до startup)
-# init_db_pool(minconn=2, maxconn=10)
-
-# Инициализация Redis при старте приложения (отложено до startup) - теперь заглушка, используется локальное хранилище
-
-@app.on_event("startup")
-async def startup_event():
-    """Инициализация асинхронных сервисов при старте."""
-    # Инициализация пула БД
-    init_db_pool(minconn=2, maxconn=10)
-    # Инициализация менеджера WebSocket (локальное хранилище)
-    await init_ws_manager()
-    logger.info("Приложение запущено")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Очистка ресурсов при остановке приложения."""
-    await close_ws_manager()
-    logger.info("Приложение остановлено")
 
 # === Middleware для безопасности HTTP заголовков (защита от MitM, XSS, Clickjacking) ===
 @app.middleware("http")
