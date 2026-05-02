@@ -31,8 +31,8 @@ from fastapi import (
 from pydantic import BaseModel
 
 # === Конфигурация JWT ===
-JWT_SECRET = os.getenv("SECRET_KEY")
-JWT_ALGORITHM = "HS256"
+# Используем те же константы что и в auth.py для корректной валидации токенов
+from .auth import SECRET_KEY as JWT_SECRET, ALGORITHM as JWT_ALGORITHM
 
 # === Конфигурация логирования ===
 logger = logging.getLogger(__name__)
