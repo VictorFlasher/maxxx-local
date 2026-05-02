@@ -627,13 +627,21 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     """
     token = websocket.query_params.get("token")
     if not token:
+        logger.warning("WebSocket уведомлений: токен не указан")
         await websocket.close(code=4001, reason="Токен не указан")
         return
 
     try:
+        logger.info(f"WebSocket уведомлений: попытка декодировать токен")
         user_id = get_current_user(token)
-    except ValueError:
-        await websocket.close(code=4002, reason="Неверный токен")
+        logger.info(f"WebSocket уведомлений: токен декодирован, user_id={user_id}")
+    except ValueError as e:
+        logger.warning(f"WebSocket уведомлений: неверный токен - {str(e)}")
+        await websocket.close(code=4002, reason=f"Неверный токен: {str(e)}")
+        return
+    except Exception as e:
+        logger.error(f"WebSocket уведомлений: ошибка при декодировании токена - {str(e)}")
+        await websocket.close(code=4002, reason=f"Ошибка токена: {str(e)}")
         return
 
     # Проверяем лимит подключений
