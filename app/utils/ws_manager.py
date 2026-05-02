@@ -19,6 +19,35 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# === Экспорт для импорта из других модулей ===
+__all__ = [
+    'ws_connections',
+    'ws_lock',
+    'online_users',
+    'online_lock',
+    'rate_limits',
+    'rate_limit_lock',
+    'cache',
+    'cache_lock',
+    'INSTANCE_ID',
+    'init_ws_manager',
+    'close_ws_manager',
+    'add_connection',
+    'remove_connection',
+    'get_chat_connections',
+    'add_user_online',
+    'remove_user_online',
+    'get_user_online_chats',
+    'is_user_online',
+    'check_ws_rate_limit',
+    'increment_ws_limit',
+    'decrement_ws_limit',
+    'cache_set',
+    'cache_get',
+    'cache_delete',
+    'get_instance_id',
+]
+
 # === Глобальные хранилища в памяти ===
 
 # Хранилище WebSocket соединений: {chat_id: {user_id: instance_id}}

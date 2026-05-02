@@ -13,6 +13,7 @@ import logging
 import os
 import uuid
 import jwt
+import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 
@@ -139,6 +140,7 @@ from ..utils.ws_manager import (
     cache_set,
     cache_get,
     get_instance_id,
+    online_lock,
 )
 
 # === Конфигурация ===
@@ -352,20 +354,38 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
             sender_username = get_username(user_id)
             await cache_set(cache_key, sender_username, ttl=600)
 
-    await _notify_users(
-        chat_id,
-        {
-            "type": "message",
-            "chat_id": chat_id,
-            "sender_id": user_id,
-            "sender_username": sender_username,
-            "chat_type": chat_type,
-            "text": None,
-            "file_path": file_url,
-            "file_type": file_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    )
+    message_data = {
+        "type": "message",
+        "chat_id": chat_id,
+        "sender_id": user_id,
+        "sender_username": sender_username,
+        "chat_type": chat_type,
+        "text": None,
+        "file_path": file_url,
+        "file_type": file_type,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    # Уведомляем через обычный WS чата
+    await _notify_users(chat_id, message_data)
+    
+    # 3. Отправляем уведомление через глобальный WS всем получателям
+    members = _get_chat_members(chat_id)
+    for member_id in members:
+        if member_id != user_id:
+            notification_ws = active_connections.get(0, {}).get(member_id)
+            if notification_ws:
+                try:
+                    from fastapi.websockets import WebSocketState
+                    if notification_ws.client_state == WebSocketState.CONNECTED:
+                        await notification_ws.send_json({
+                            "type": "new_message",
+                            "chat_id": chat_id,
+                            "sender_id": user_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                except Exception:
+                    pass
 
 # === WebSocket-маршрут ===
 @router.websocket("/ws/{chat_id}")
@@ -527,7 +547,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         sender_username = get_username(user_id)
                         await cache_set(cache_key, sender_username, ttl=600)
 
-                # === 3. Рассылаем сообщение ===
+                # === 3. Рассылаем сообщение через обычный WS чата ===
                 await _notify_users(
                     chat_id,
                     {
@@ -541,7 +561,27 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                     },
                 )
 
-                # === 4. Обновляем последнее прочитанное сообщение для отправителя ===
+                # === 4. Отправляем уведомление через глобальный WS всем получателям ===
+                # Получаем всех участников чата кроме отправителя
+                members = _get_chat_members(chat_id)
+                for member_id in members:
+                    if member_id != user_id:
+                        # Отправляем уведомление только если у пользователя есть подключение к notifications
+                        notification_ws = active_connections.get(0, {}).get(member_id)
+                        if notification_ws:
+                            try:
+                                from fastapi.websockets import WebSocketState
+                                if notification_ws.client_state == WebSocketState.CONNECTED:
+                                    await notification_ws.send_json({
+                                        "type": "new_message",
+                                        "chat_id": chat_id,
+                                        "sender_id": user_id,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    })
+                            except Exception:
+                                pass
+
+                # === 5. Обновляем последнее прочитанное сообщение для отправителя ===
                 from ..models.chat import update_last_read_message
                 update_last_read_message(user_id, chat_id, message_id)
 
@@ -591,13 +631,8 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         return
 
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("user_id")
-    except Exception:
-        await websocket.close(code=4002, reason="Неверный токен")
-        return
-
-    if not user_id:
+        user_id = get_current_user(token)
+    except ValueError:
         await websocket.close(code=4002, reason="Неверный токен")
         return
 
@@ -613,6 +648,10 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     await add_connection(0, user_id, INSTANCE_ID)
     await increment_ws_limit(user_id)
     
+    # Добавляем пользователя в онлайн
+    async with online_lock:
+        online_users[user_id].add(0)
+    
     # Логируем событие подключения
     try:
         from ..models.chat import log_connection_event
@@ -620,7 +659,7 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Ошибка логирования connect: {str(e)}")
 
-    # Отправляем текущий статус пользователя
+    # Уведомление о входе (онлайн) - рассылаем во ВСЕ чаты пользователя
     await _broadcast_status_to_all_chats(user_id, "online")
 
     try:
@@ -639,6 +678,13 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         # Удаляем соединение
         await remove_connection(0, user_id)
         await decrement_ws_limit(user_id)
+        
+        # Удаляем из онлайн
+        async with online_lock:
+            if user_id in online_users:
+                online_users[user_id].discard(0)
+                if not online_users[user_id]:
+                    del online_users[user_id]
         
         # Проверяем, есть ли у пользователя другие активные подключения
         is_online = await is_user_online(user_id)
