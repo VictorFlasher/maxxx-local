@@ -403,13 +403,6 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         if remover_id != owner_id and remover_id != user_id:
             return False
 
-        # Сначала удаляем записи из last_read_messages для этого пользователя и чата
-        # Это нужно сделать ДО удаления участника, чтобы избежать нарушения FK
-        cur.execute("""
-            DELETE FROM last_read_messages 
-            WHERE user_id = %s AND chat_id = %s
-        """, (user_id, chat_id))
-
         # Удаляем участника
         cur.execute("DELETE FROM chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, user_id))
         
@@ -419,14 +412,6 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         
         # Если участников не осталось - удаляем чат и все сообщения
         if remaining_count == 0:
-            # Сначала удаляем записи из last_read_messages (чтобы избежать нарушения FK)
-            cur.execute("""
-                DELETE FROM last_read_messages 
-                WHERE chat_id = %s OR last_read_message_id IN (
-                    SELECT message_id FROM messages WHERE chat_id = %s
-                )
-            """, (chat_id, chat_id))
-            
             cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
             cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
         
@@ -443,7 +428,6 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
 def delete_private_chat(chat_id: int, user_id: int) -> bool:
     """
     Удаляет личный чат. Любой из участников может удалить.
-    Сначала удаляет записи из last_read_messages, затем сообщения и сам чат.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -466,18 +450,10 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
         if user_id != created_by and not is_member:
             return False
 
-        # 1. Сначала удаляем записи из last_read_messages (чтобы избежать нарушения FK)
-        cur.execute("""
-            DELETE FROM last_read_messages 
-            WHERE chat_id = %s OR last_read_message_id IN (
-                SELECT message_id FROM messages WHERE chat_id = %s
-            )
-        """, (chat_id, chat_id))
-        
-        # 2. Удаляем все сообщения в чате
+        # 1. Удаляем все сообщения в чате
         cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
         
-        # 3. Удаляем сам чат
+        # 2. Удаляем сам чат
         cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
         
         conn.commit()
@@ -564,36 +540,16 @@ def log_connection_event(user_id: int, event_type: str) -> None:
 def update_last_read_message(user_id: int, chat_id: int, message_id: int) -> None:
     """
     Обновляет последнее прочитанное сообщение для пользователя в чате.
-
-    Args:
-        user_id: ID пользователя
-        chat_id: ID чата
-        message_id: ID последнего прочитанного сообщения
+    Заглушка - таблица last_read_messages отсутствует.
     """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            INSERT INTO last_read_messages (user_id, chat_id, last_read_message_id, updated_at)
-            VALUES (%s, %s, %s, NOW())
-            ON CONFLICT (user_id, chat_id)
-            DO UPDATE SET last_read_message_id = %s, updated_at = NOW()
-        """, (user_id, chat_id, message_id, message_id))
-        conn.commit()
-    finally:
-        cur.close()
-        release_db_connection(conn)
+    # Функция не используется, так как таблица last_read_messages отсутствует в БД
+    pass
 
 
 def get_unread_count(user_id: int) -> Dict[int, int]:
     """
     Возвращает количество непрочитанных сообщений для каждого чата пользователя.
-
-    Args:
-        user_id: ID пользователя
-
-    Returns:
-        Словарь {chat_id: unread_count}
+    Упрощённая версия без таблицы last_read_messages.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -614,26 +570,12 @@ def get_unread_count(user_id: int) -> Dict[int, int]:
         result = {}
         
         for chat_id in chat_ids:
-            # Получаем ID последнего прочитанного сообщения
+            # Считаем все сообщения от других пользователей как непрочитанные
+            # (упрощённая версия без отслеживания прочитанных)
             cur.execute("""
-                SELECT last_read_message_id FROM last_read_messages
-                WHERE user_id = %s AND chat_id = %s
-            """, (user_id, chat_id))
-            row = cur.fetchone()
-            last_read_id = row[0] if row else None
-            
-            # Считаем непрочитанные сообщения
-            if last_read_id:
-                cur.execute("""
-                    SELECT COUNT(*) FROM messages
-                    WHERE chat_id = %s AND message_id > %s AND sender_id != %s
-                """, (chat_id, last_read_id, user_id))
-            else:
-                # Если никогда не читал, считаем все сообщения кроме своих
-                cur.execute("""
-                    SELECT COUNT(*) FROM messages
-                    WHERE chat_id = %s AND sender_id != %s
-                """, (chat_id, user_id))
+                SELECT COUNT(*) FROM messages
+                WHERE chat_id = %s AND sender_id != %s
+            """, (chat_id, user_id))
             
             count = cur.fetchone()[0]
             if count > 0:
