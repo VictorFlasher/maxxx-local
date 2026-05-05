@@ -2,6 +2,13 @@
 Модуль для работы с чатами: создание, проверка участия, получение истории.
 Использует единую таблицу 'chats' для всех типов чатов.
 
+Структура БД:
+- chats: chat_id, name, is_group, created_at, created_by
+- chat_members: chat_id, user_id, joined_at, role
+- messages: message_id, chat_id, sender_id, content, encrypted_key, iv, created_at, is_edited, edited_at
+- connection_logs: log_id, user_id, event_type, ip_address, created_at
+- last_read_messages: (предполагается) user_id, chat_id, last_read_message_id, updated_at
+
 Функции модуля:
 - Создание личных и групповых чатов
 - Проверка участия пользователя в чате
@@ -35,20 +42,26 @@ def _get_chat_members(chat_id: int) -> List[int]:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT type, user1_id, user2_id FROM chats WHERE id = %s", (chat_id,))
+        # Сначала проверяем тип чата
+        cur.execute("SELECT is_group, created_by FROM chats WHERE chat_id = %s", (chat_id,))
         row = cur.fetchone()
         if not row:
             return []
 
-        chat_type, user1, user2 = row
+        is_group, created_by = row
 
-        if chat_type == 'private':
-            return [user1, user2]
-        elif chat_type == 'group':
+        if not is_group:
+            # Личный чат - участники это создатель и второй пользователь
+            # Для личных чатов created_by = user1_id, а user2_id хранится в chat_members
+            cur.execute("SELECT user_id FROM chat_members WHERE chat_id = %s", (chat_id,))
+            members = [r[0] for r in cur.fetchall()]
+            if created_by and created_by not in members:
+                members.insert(0, created_by)
+            return members
+        else:
+            # Групповой чат - все участники из chat_members
             cur.execute("SELECT user_id FROM chat_members WHERE chat_id = %s", (chat_id,))
             return [r[0] for r in cur.fetchall()]
-        else:
-            return []
     finally:
         cur.close()
         release_db_connection(conn)
@@ -70,8 +83,12 @@ def create_private_chat(user1_id: int, user2_id: int) -> int:
     """
     Создаёт или возвращает существующий личный чат между двумя пользователями.
 
+    Личный чат создаётся так:
+    - chats: is_group=False, created_by=user1_id
+    - chat_members: добавляется user2_id (user1 уже считается создателем)
+
     Args:
-        user1_id: ID первого пользователя
+        user1_id: ID первого пользователя (создатель)
         user2_id: ID второго пользователя
 
     Returns:
@@ -87,29 +104,44 @@ def create_private_chat(user1_id: int, user2_id: int) -> int:
     cur = conn.cursor()
 
     try:
-        # Ищем существующий чат
+        # Ищем существующий личный чат, где оба пользователя являются участниками
+        # Проверяем через chat_members + created_by
         cur.execute("""
-            SELECT id FROM chats
-            WHERE type = 'private'
-              AND (
-                  (user1_id = %s AND user2_id = %s)
-                  OR
-                  (user1_id = %s AND user2_id = %s)
+            SELECT c.chat_id FROM chats c
+            WHERE c.is_group = FALSE
+              AND c.created_by IN (%s, %s)
+              AND EXISTS (
+                  SELECT 1 FROM chat_members cm 
+                  WHERE cm.chat_id = c.chat_id 
+                    AND cm.user_id IN (%s, %s)
               )
-        """, (user1_id, user2_id, user2_id, user1_id))
+        """, (user1_id, user2_id, user1_id, user2_id))
 
         row = cur.fetchone()
         if row:
-            return row[0]
+            # Дополнительно проверим, что в чате ровно 2 участника (с учётом created_by)
+            chat_id = row[0]
+            cur.execute("SELECT COUNT(*) FROM chat_members WHERE chat_id = %s", (chat_id,))
+            member_count = cur.fetchone()[0]
+            # created_by + члены из chat_members должны дать 2 уникальных пользователя
+            if member_count == 1:  # один в chat_members + created_by = 2
+                return chat_id
 
         # Создаём новый чат
         cur.execute("""
-            INSERT INTO chats (type, user1_id, user2_id)
-            VALUES ('private', %s, %s)
-            RETURNING id
-        """, (user1_id, user2_id))
+            INSERT INTO chats (is_group, created_by)
+            VALUES (FALSE, %s)
+            RETURNING chat_id
+        """, (user1_id,))
 
         chat_id = cur.fetchone()[0]
+
+        # Добавляем второго пользователя как участника
+        cur.execute("""
+            INSERT INTO chat_members (chat_id, user_id)
+            VALUES (%s, %s)
+        """, (chat_id, user2_id))
+
         conn.commit()
         return chat_id
 
@@ -117,14 +149,15 @@ def create_private_chat(user1_id: int, user2_id: int) -> int:
         conn.rollback()
         # Повторная попытка найти чат (гонка условий)
         cur.execute("""
-            SELECT id FROM chats
-            WHERE type = 'private'
-              AND (
-                  (user1_id = %s AND user2_id = %s)
-                  OR
-                  (user1_id = %s AND user2_id = %s)
+            SELECT c.chat_id FROM chats c
+            WHERE c.is_group = FALSE
+              AND c.created_by IN (%s, %s)
+              AND EXISTS (
+                  SELECT 1 FROM chat_members cm 
+                  WHERE cm.chat_id = c.chat_id 
+                    AND cm.user_id IN (%s, %s)
               )
-        """, (user1_id, user2_id, user2_id, user1_id))
+        """, (user1_id, user2_id, user1_id, user2_id))
         row = cur.fetchone()
         if row:
             return row[0]
@@ -148,10 +181,10 @@ def create_group_chat(name: str, owner_id: int) -> int:
     cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO chats (type, name, owner_id, created_by)
-            VALUES ('group', %s, %s, %s)
-            RETURNING id
-        """, (name, owner_id, owner_id))
+            INSERT INTO chats (name, is_group, created_by)
+            VALUES (%s, TRUE, %s)
+            RETURNING chat_id
+        """, (name, owner_id))
         chat_id = cur.fetchone()[0]
 
         # Добавляем владельца как первого участника
@@ -181,23 +214,26 @@ def is_user_in_chat(chat_id: int, user_id: int) -> bool:
     cur = conn.cursor()
     try:
         # Сначала определим тип чата
-        cur.execute("SELECT type, user1_id, user2_id FROM chats WHERE id = %s", (chat_id,))
+        cur.execute("SELECT is_group, created_by FROM chats WHERE chat_id = %s", (chat_id,))
         row = cur.fetchone()
         if not row:
             return False
 
-        chat_type, user1, user2 = row
+        is_group, created_by = row
 
-        if chat_type == 'private':
-            return user_id in (user1, user2)
-        elif chat_type == 'group':
+        if not is_group:
+            # Личный чат: пользователь либо создатель, либо в chat_members
+            return user_id == created_by or cur.execute(
+                "SELECT 1 FROM chat_members WHERE chat_id = %s AND user_id = %s",
+                (chat_id, user_id)
+            ) and cur.fetchone() is not None
+        else:
+            # Групповой чат
             cur.execute(
                 "SELECT 1 FROM chat_members WHERE chat_id = %s AND user_id = %s",
                 (chat_id, user_id)
             )
             return cur.fetchone() is not None
-        else:
-            return False
     finally:
         cur.close()
         release_db_connection(conn)
@@ -206,11 +242,18 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
+        # Сначала определим тип чата
+        cur.execute("SELECT is_group FROM chats WHERE chat_id = %s", (chat_id,))
+        row = cur.fetchone()
+        if not row:
+            return []
+        
+        is_group = row[0]
+        
         cur.execute("""
-            SELECT m.message_id, m.sender_id, u.username, m.text, m.file_path, m.created_at, c.type
+            SELECT m.message_id, m.sender_id, u.username, m.content, m.encrypted_key, m.iv, m.created_at, m.is_edited, m.edited_at
             FROM messages m
             JOIN users u ON m.sender_id = u.user_id
-            JOIN chats c ON m.chat_id = c.id
             WHERE m.chat_id = %s
             ORDER BY m.created_at ASC
             LIMIT %s
@@ -219,23 +262,20 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         rows = cur.fetchall()
         result = []
         for row in rows:
-            chat_type = row[6]
             msg = {
                 "message_id": row[0],
                 "sender_id": row[1],
-                "text": row[3],
-                "file_path": row[4],
-                "created_at": row[5].isoformat() if row[5] else None,
-                "chat_type": chat_type
+                "content": row[3],
+                "encrypted_key": row[4],
+                "iv": row[5],
+                "created_at": row[6].isoformat() if row[6] else None,
+                "is_edited": row[7],
+                "edited_at": row[8].isoformat() if row[8] else None,
+                "chat_type": "group" if is_group else "private"
             }
 
-            # Определяем тип файла
-            if row[4]:  # есть file_path
-                _, ext = os.path.splitext(row[4])
-                msg["file_type"] = ext.lower()
-
-            # Только для групповых чатов добавляем имя
-            if chat_type == "group":
+            # Только для групповых чатов добавляем имя отправителя
+            if is_group:
                 msg["sender_username"] = row[2]
             result.append(msg)
 
@@ -253,47 +293,56 @@ def get_user_chats(user_id: int) -> List[Dict[str, Any]]:
     try:
         chats = []
 
-        # Личные чаты
+        # Личные чаты: где пользователь - создатель или участник в chat_members
         cur.execute("""
-            SELECT c.id, u1.username AS user1_name, u2.username AS user2_name,
-                   c.user1_id, c.user2_id
+            SELECT c.chat_id, c.created_by, cm.user_id as member_id, 
+                   u1.username as creator_name, u2.username as member_name
             FROM chats c
-            JOIN users u1 ON c.user1_id = u1.user_id
-            JOIN users u2 ON c.user2_id = u2.user_id
-            WHERE c.type = 'private' AND (c.user1_id = %s OR c.user2_id = %s)
+            LEFT JOIN chat_members cm ON c.chat_id = cm.chat_id
+            LEFT JOIN users u1 ON c.created_by = u1.user_id
+            LEFT JOIN users u2 ON cm.user_id = u2.user_id
+            WHERE c.is_group = FALSE 
+              AND (c.created_by = %s OR cm.user_id = %s)
         """, (user_id, user_id))
 
+        processed_chat_ids = set()
         for row in cur.fetchall():
-            chat_id, user1_name, user2_name, user1_id, user2_id = row
-
-            # Определяем, кто "другой" пользователь
-            if user1_id == user_id:
-                other_name = user2_name
-                other_id = user2_id
+            chat_id, created_by, member_id, creator_name, member_name = row
+            
+            if chat_id in processed_chat_ids:
+                continue
+            processed_chat_ids.add(chat_id)
+            
+            # Определяем "другого" пользователя
+            if created_by == user_id:
+                # Пользователь - создатель, второй пользователь - это member_id
+                other_id = member_id
+                other_name = member_name
             else:
-                other_name = user1_name
-                other_id = user1_id
+                # Пользователь - второй участник, создатель - created_by
+                other_id = created_by
+                other_name = creator_name
 
             chats.append({
                 "chat_id": chat_id,
                 "type": "private",
-                "name": f"Чат с {other_name}",
+                "name": f"Чат с {other_name}" if other_name else "Личный чат",
                 "other_user_id": other_id
             })
 
-        # Групповые чаты (без изменений)
+        # Групповые чаты
         cur.execute("""
-            SELECT c.id, c.name
+            SELECT c.chat_id, c.name
             FROM chats c
-            JOIN chat_members cm ON c.id = cm.chat_id
-            WHERE c.type = 'group' AND cm.user_id = %s
+            JOIN chat_members cm ON c.chat_id = cm.chat_id
+            WHERE c.is_group = TRUE AND cm.user_id = %s
         """, (user_id,))
 
         for row in cur.fetchall():
             chats.append({
                 "chat_id": row[0],
                 "type": "group",
-                "name": row[1]
+                "name": row[1] or "Групповой чат"
             })
 
         return chats
@@ -312,8 +361,8 @@ def add_user_to_group_chat(chat_id: int, user_id: int, inviter_id: int) -> bool:
         # Проверяем, что чат групповой и inviter является участником
         cur.execute("""
             SELECT 1 FROM chats c
-            JOIN chat_members cm ON c.id = cm.chat_id
-            WHERE c.id = %s AND c.type = 'group' AND cm.user_id = %s
+            JOIN chat_members cm ON c.chat_id = cm.chat_id
+            WHERE c.chat_id = %s AND c.is_group = TRUE AND cm.user_id = %s
         """, (chat_id, inviter_id))
         row = cur.fetchone()
         if not row:
@@ -344,7 +393,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
     cur = conn.cursor()
     try:
         # Проверяем, что чат групповой
-        cur.execute("SELECT COALESCE(owner_id, created_by) FROM chats WHERE id = %s AND type = 'group'", (chat_id,))
+        cur.execute("SELECT created_by FROM chats WHERE chat_id = %s AND is_group = TRUE", (chat_id,))
         row = cur.fetchone()
         if not row:
             return False
@@ -379,7 +428,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
             """, (chat_id, chat_id))
             
             cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
-            cur.execute("DELETE FROM chats WHERE id = %s", (chat_id,))
+            cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
         
         conn.commit()
         return True
@@ -401,11 +450,20 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
     try:
         # Проверяем, что чат существует, личный и пользователь — участник
         cur.execute("""
-            SELECT user1_id, user2_id FROM chats
-            WHERE id = %s AND type = 'private'
+            SELECT created_by FROM chats
+            WHERE chat_id = %s AND is_group = FALSE
         """, (chat_id,))
         row = cur.fetchone()
-        if not row or user_id not in (row[0], row[1]):
+        if not row:
+            return False
+        
+        created_by = row[0]
+        
+        # Проверяем, что пользователь - создатель или участник
+        cur.execute("SELECT 1 FROM chat_members WHERE chat_id = %s AND user_id = %s", (chat_id, user_id))
+        is_member = cur.fetchone() is not None
+        
+        if user_id != created_by and not is_member:
             return False
 
         # 1. Сначала удаляем записи из last_read_messages (чтобы избежать нарушения FK)
@@ -420,7 +478,7 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
         cur.execute("DELETE FROM messages WHERE chat_id = %s", (chat_id,))
         
         # 3. Удаляем сам чат
-        cur.execute("DELETE FROM chats WHERE id = %s", (chat_id,))
+        cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
         
         conn.commit()
         return True
@@ -437,9 +495,11 @@ def get_chat_type(chat_id: int) -> str:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT type FROM chats WHERE id = %s", (chat_id,))
+        cur.execute("SELECT is_group FROM chats WHERE chat_id = %s", (chat_id,))
         row = cur.fetchone()
-        return row[0] if row else None
+        if row is None:
+            return None
+        return "group" if row[0] else "private"
     finally:
         cur.close()
         release_db_connection(conn)
@@ -540,12 +600,14 @@ def get_unread_count(user_id: int) -> Dict[int, int]:
     try:
         # Получаем все чаты пользователя
         cur.execute("""
-            SELECT c.id FROM chats c
-            WHERE c.type = 'private' AND (c.user1_id = %s OR c.user2_id = %s)
+            SELECT c.chat_id FROM chats c
+            WHERE c.is_group = FALSE AND (c.created_by = %s OR EXISTS (
+                SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.chat_id AND cm.user_id = %s
+            ))
             UNION
-            SELECT c.id FROM chats c
-            JOIN chat_members cm ON c.id = cm.chat_id
-            WHERE c.type = 'group' AND cm.user_id = %s
+            SELECT c.chat_id FROM chats c
+            JOIN chat_members cm ON c.chat_id = cm.chat_id
+            WHERE c.is_group = TRUE AND cm.user_id = %s
         """, (user_id, user_id, user_id))
         
         chat_ids = [row[0] for row in cur.fetchall()]
