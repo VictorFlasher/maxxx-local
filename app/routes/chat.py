@@ -649,6 +649,19 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         await websocket.close(code=4003, reason="Превышен лимит подключений")
         return
 
+    # Проверяем существование пользователя
+    from ..models.user import get_user_by_id
+    try:
+        user = get_user_by_id(user_id)
+        if not user or user.get("is_banned"):
+            logger.warning(f"WebSocket уведомлений: пользователь {user_id} не найден или забанен")
+            await websocket.close(code=4003, reason="Пользователь не найден или забанен")
+            return
+    except Exception as e:
+        logger.error(f"WebSocket уведомлений: ошибка проверки пользователя - {str(e)}")
+        await websocket.close(code=4003, reason="Ошибка проверки пользователя")
+        return
+
     await websocket.accept()
     logger.info(f"WebSocket уведомлений подключён: user_id={user_id}")
 
