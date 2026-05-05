@@ -178,8 +178,7 @@ router = APIRouter()
 
 class CreatePrivateChatRequest(BaseModel):
     """Запрос на создание личного чата между двумя пользователями."""
-    user1_id: int
-    user2_id: int
+    user2_id: int  # Второй пользователь (первый - текущий авторизованный)
 
 
 class CreateGroupChatRequest(BaseModel):
@@ -202,27 +201,9 @@ def _get_chat_members(chat_id: int) -> List[int]:
     Returns:
         Список ID участников. Пустой список если чат не найден.
     """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT type, user1_id, user2_id FROM chats WHERE id = %s", (chat_id,))
-        row = cur.fetchone()
-        if not row:
-            # Чат не найден - возвращаем пустой список (неявное поведение)
-            return []
-
-        chat_type, user1, user2 = row
-
-        if chat_type == 'private':
-            return [user1, user2]
-        elif chat_type == 'group':
-            cur.execute("SELECT user_id FROM chat_members WHERE chat_id = %s", (chat_id,))
-            return [r[0] for r in cur.fetchall()]
-        else:
-            return []
-    finally:
-        cur.close()
-        release_db_connection(conn)
+    # Используем функцию из models.chat
+    from ..models.chat import get_chat_members as model_get_chat_members
+    return model_get_chat_members(chat_id)
 
 
 def _get_online_users_in_chat(chat_id: int) -> List[int]:
@@ -268,18 +249,21 @@ async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Личные чаты
+        # Личные чаты: где пользователь - создатель или участник в chat_members
         cur.execute("""
-            SELECT id FROM chats
-            WHERE type = 'private' AND (user1_id = %s OR user2_id = %s)
+            SELECT c.chat_id FROM chats c
+            WHERE c.is_group = FALSE 
+              AND (c.created_by = %s OR EXISTS (
+                  SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.chat_id AND cm.user_id = %s
+              ))
         """, (user_id, user_id))
         private_chats = [row[0] for row in cur.fetchall()]
         
         # Групповые чаты
         cur.execute("""
-            SELECT c.id FROM chats c
-            JOIN chat_members cm ON c.id = cm.chat_id
-            WHERE c.type = 'group' AND cm.user_id = %s
+            SELECT c.chat_id FROM chats c
+            JOIN chat_members cm ON c.chat_id = cm.chat_id
+            WHERE c.is_group = TRUE AND cm.user_id = %s
         """, (user_id,))
         group_chats = [row[0] for row in cur.fetchall()]
         
@@ -739,9 +723,8 @@ def create_private_chat_endpoint(
     request: CreatePrivateChatRequest,
     current_user_id: int = Depends(get_current_user_from_header),
 ):
-    if current_user_id not in (request.user1_id, request.user2_id):
-        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
-    chat_id = create_private_chat(request.user1_id, request.user2_id)
+    # Создаём чат между текущим пользователем и указанным user2_id
+    chat_id = create_private_chat(current_user_id, request.user2_id)
     return {"chat_id": chat_id}
 
 @router.post("/chats/group", summary="Создать групповой чат")
@@ -1247,9 +1230,9 @@ def report_message(
         # Проверяем, существует ли сообщение и получаем данные о чате и авторе
         cur.execute(
             """
-            SELECT m.message_id, m.sender_id, m.chat_id, c.type, u.is_admin
+            SELECT m.message_id, m.sender_id, m.chat_id, c.is_group, u.is_admin
             FROM messages m
-            JOIN chats c ON m.chat_id = c.id
+            JOIN chats c ON m.chat_id = c.chat_id
             JOIN users u ON m.sender_id = u.user_id
             WHERE m.message_id = %s
             """,
@@ -1259,7 +1242,10 @@ def report_message(
         if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
         
-        message_id, sender_id, chat_id, chat_type, sender_is_admin = row
+        message_id, sender_id, chat_id, is_group, sender_is_admin = row
+        
+        # Определяем тип чата
+        chat_type = "group" if is_group else "private"
         
         # Для личных чатов - нельзя пожаловаться на себя
         if chat_type == 'private' and sender_id == current_user_id:

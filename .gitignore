@@ -21,6 +21,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# IDE
+.vscode/
+.idea/
+
 # Environment
 .env
 .env.local
@@ -29,19 +33,8 @@ wheels/
 # Logs
 *.log
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
 # Coverage
 .coverage
 coverage/
 htmlcov/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
 ```
