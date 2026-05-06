@@ -1252,7 +1252,7 @@ def report_message(
         # Сохраняем жалобу (теперь можно жаловаться на всех, включая админов)
         cur.execute(
             """
-            INSERT INTO message_reports (message_id, reporter_id, reason, created_at)
+            INSERT INTO maxxx_local.message_reports (message_id, reporter_id, reason, created_at)
             VALUES (%s, %s, %s, NOW())
             """,
             (request.message_id, current_user_id, request.reason)

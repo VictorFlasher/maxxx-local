@@ -161,9 +161,9 @@ def get_reports(
             SELECT 
                 r.report_id, r.message_id, r.reporter_id, r.reason, 
                 r.status, r.created_at, r.reviewed_by, r.reviewed_at,
-                m.text as message_text, m.sender_id, m.chat_id
-            FROM message_reports r
-            JOIN messages m ON r.message_id = m.message_id
+                m.content as message_text, m.sender_id, m.chat_id
+            FROM maxxx_local.message_reports r
+            JOIN maxxx_local.messages m ON r.message_id = m.message_id
         """
         params = []
         
@@ -220,8 +220,8 @@ def review_report(
         # Проверяем существование жалобы и получаем данные
         cur.execute("""
             SELECT r.message_id, m.sender_id 
-            FROM message_reports r
-            JOIN messages m ON r.message_id = m.message_id
+            FROM maxxx_local.message_reports r
+            JOIN maxxx_local.messages m ON r.message_id = m.message_id
             WHERE r.report_id = %s
         """, (request.report_id,))
         row = cur.fetchone()
@@ -247,7 +247,7 @@ def review_report(
             
             # Обновляем статус жалобы
             cur.execute("""
-                UPDATE message_reports 
+                UPDATE maxxx_local.message_reports 
                 SET status = 'actioned', reviewed_by = %s, reviewed_at = NOW()
                 WHERE report_id = %s
             """, (current_user_id, request.report_id))
@@ -255,7 +255,7 @@ def review_report(
         elif request.action == 'dismiss':
             # Отклоняем жалобу
             cur.execute("""
-                UPDATE message_reports 
+                UPDATE maxxx_local.message_reports 
                 SET status = 'dismissed', reviewed_by = %s, reviewed_at = NOW()
                 WHERE report_id = %s
             """, (current_user_id, request.report_id))
