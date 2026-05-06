@@ -222,11 +222,17 @@ def is_user_in_chat(chat_id: int, user_id: int) -> bool:
         is_group, created_by = row
 
         if not is_group:
-            # Личный чат: пользователь либо создатель, либо в chat_members
-            return user_id == created_by or cur.execute(
+            # Личный чат: пользователь имеет доступ если он создатель ИЛИ второй участник
+            # Второй участник определяется по chat_members
+            if user_id == created_by:
+                return True
+            
+            # Проверяем, есть ли пользователь в chat_members для этого чата
+            cur.execute(
                 "SELECT 1 FROM maxxx_local.chat_members WHERE chat_id = %s AND user_id = %s",
                 (chat_id, user_id)
-            ) and cur.fetchone() is not None
+            )
+            return cur.fetchone() is not None
         else:
             # Групповой чат
             cur.execute(
