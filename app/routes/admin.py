@@ -253,10 +253,10 @@ def review_report(
             """, (current_user_id, request.report_id))
             
         elif request.action == 'dismiss':
-            # Отклоняем жалобу
+            # Отклоняем жалобу (статус 'reviewed' означает, что жалоба рассмотрена и отклонена)
             cur.execute("""
                 UPDATE maxxx_local.message_reports 
-                SET status = 'dismissed', reviewed_by = %s, reviewed_at = NOW()
+                SET status = 'reviewed', reviewed_by = %s, reviewed_at = NOW()
                 WHERE report_id = %s
             """, (current_user_id, request.report_id))
         else:
