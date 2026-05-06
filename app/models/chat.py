@@ -257,7 +257,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         is_group = row[0]
         
         cur.execute("""
-            SELECT m.message_id, m.sender_id, u.username, m.content, m.encrypted_key, m.iv, m.created_at, m.is_edited, m.edited_at
+            SELECT m.message_id, m.sender_id, u.username, m.text, m.created_at, m.is_edited, m.edited_at, m.file_path, m.file_type
             FROM maxxx_local.messages m
             JOIN maxxx_local.users u ON m.sender_id = u.user_id
             WHERE m.chat_id = %s
@@ -271,13 +271,13 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
             msg = {
                 "message_id": row[0],
                 "sender_id": row[1],
-                "sender_username": row[2],  # Всегда добавляем username
-                "content": row[3],
-                "encrypted_key": row[4],
-                "iv": row[5],
-                "created_at": row[6].isoformat() if row[6] else None,
-                "is_edited": row[7],
-                "edited_at": row[8].isoformat() if row[8] else None,
+                "sender_username": row[2],
+                "text": row[3],
+                "timestamp": row[4].isoformat() if row[4] else None,
+                "is_edited": row[5],
+                "edited_at": row[6].isoformat() if row[6] else None,
+                "file_path": row[7],
+                "file_type": row[8],
                 "chat_type": "group" if is_group else "private"
             }
 
