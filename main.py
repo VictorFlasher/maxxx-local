@@ -12,6 +12,18 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
+# Настраиваем логгер для main модуля
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
 from app.routes import auth, config, chat, admin
 from app.routes.auth import limiter  # Импортируем экземпляр лимитера
 from app.database import init_db_pool  # Импорт функции инициализации пула БД
@@ -92,6 +104,8 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 # Добавляем CORS middleware с ограниченными настройками
+# Важно: allow_origins должен содержать точные origin, с которых работает фронтенд
+# Для WebSocket критически важно разрешить заголовки Sec-WebSocket-Protocol
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],  # В production заменить на конкретные домены
@@ -99,6 +113,16 @@ app.add_middleware(
     allow_methods=["*"],  # Разрешаем все методы включая WebSocket
     allow_headers=["*"],  # Разрешаем все заголовки включая Sec-WebSocket-*
 )
+
+# Добавляем middleware для логирования CORS запросов
+@app.middleware("http")
+async def cors_debug_middleware(request: Request, call_next):
+    """Middleware для отладки CORS проблем."""
+    if request.scope.get("type") == "websocket":
+        origin = request.headers.get("origin", "no-origin")
+        logger.info(f"CORS DEBUG: WebSocket запрос, origin={origin}, path={request.url.path}")
+    response = await call_next(request)
+    return response
 
 def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     """Обработчик превышения лимита запросов."""
