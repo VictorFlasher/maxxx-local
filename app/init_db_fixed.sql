@@ -86,6 +86,18 @@ CREATE TABLE IF NOT EXISTS ban_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Таблица жалоб на сообщения
+CREATE TABLE IF NOT EXISTS message_reports (
+    report_id SERIAL PRIMARY KEY,
+    message_id INTEGER REFERENCES messages(message_id) ON DELETE CASCADE,
+    reporter_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved')),
+    reviewed_by INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Индексы для производительности
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -100,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_bans_user_id ON bans(user_id);
 CREATE INDEX IF NOT EXISTS idx_ban_history_user_id ON ban_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_last_read_messages ON last_read_messages(user_id, chat_id);
 CREATE INDEX IF NOT EXISTS idx_connection_logs_user_id ON connection_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_message_reports_status ON message_reports(status);
+CREATE INDEX IF NOT EXISTS idx_message_reports_message_id ON message_reports(message_id);
 
 -- Создаем тестового пользователя admin@example.com / admin123
 -- Пароль хешируется через bcrypt (нужно вставить реальный хеш)
