@@ -637,14 +637,16 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     # Проверяем существование пользователя
     from ..models.user import get_user_by_id
     try:
+        logger.info(f"WebSocket уведомлений: проверка пользователя {user_id}...")
         user = get_user_by_id(user_id)
+        logger.info(f"WebSocket уведомлений: пользователь найден: {user}")
         if not user or user.get("is_banned"):
             logger.warning(f"WebSocket уведомлений: пользователь {user_id} не найден или забанен")
             await websocket.close(code=4003, reason="Пользователь не найден или забанен")
             return
     except Exception as e:
-        logger.error(f"WebSocket уведомлений: ошибка проверки пользователя - {str(e)}")
-        await websocket.close(code=4003, reason="Ошибка проверки пользователя")
+        logger.error(f"WebSocket уведомлений: ошибка проверки пользователя - {type(e).__name__}: {str(e)}")
+        await websocket.close(code=4003, reason=f"Ошибка проверки пользователя: {str(e)}")
         return
 
     await websocket.accept()
