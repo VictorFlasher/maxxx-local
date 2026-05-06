@@ -94,8 +94,8 @@ async def security_headers_middleware(request: Request, call_next):
 # Добавляем CORS middleware с ограниченными настройками
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В production заменить на конкретные домены
-    allow_credentials=False,  # Отключаем credentials для безопасности
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],  # В production заменить на конкретные домены
+    allow_credentials=True,  # Включаем credentials для WebSocket
     allow_methods=["*"],  # Разрешаем все методы включая WebSocket
     allow_headers=["*"],  # Разрешаем все заголовки включая Sec-WebSocket-*
 )
