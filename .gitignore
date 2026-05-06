@@ -1,13 +1,15 @@
-```gitignore
-# Python cache
+```
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Dependencies
-venv/
-.venv/
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
 .env
 .env.local
 *.env.*
@@ -16,8 +18,10 @@ venv/
 .vscode/
 .idea/
 
-# Logs
-*.log
+# Dependencies
+.venv/
+venv/
+node_modules/
 
 # Build artifacts
 dist/

@@ -207,7 +207,6 @@ async def is_user_online(user_id: int) -> bool:
         return True
     
     # Проверяем подключения уведомлений
-    from app.routes.chat import notification_connections
     async with notification_lock:
         if user_id in notification_connections:
             ws = notification_connections.get(user_id)
