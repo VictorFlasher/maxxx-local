@@ -618,14 +618,20 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
 
     try:
         logger.info(f"WebSocket уведомлений: попытка декодировать токен")
-        user_id = get_current_user(token)
+        # Декодируем токен напрямую, чтобы избежать проблем с импортом get_current_user
+        import jwt
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("user_id")
+        if user_id is None:
+            raise ValueError("Нет user_id в токене")
+        user_id = int(user_id)
         logger.info(f"WebSocket уведомлений: токен декодирован, user_id={user_id}")
-    except ValueError as e:
-        logger.warning(f"WebSocket уведомлений: неверный токен - {str(e)}")
-        await websocket.close(code=4002, reason=f"Неверный токен: {str(e)}")
+    except jwt.ExpiredSignatureError:
+        logger.warning("WebSocket уведомлений: срок действия токена истёк")
+        await websocket.close(code=4002, reason="Срок действия токена истёк")
         return
     except Exception as e:
-        logger.error(f"WebSocket уведомлений: ошибка при декодировании токена - {str(e)}")
+        logger.error(f"WebSocket уведомлений: ошибка при декодировании токена - {type(e).__name__}: {str(e)}")
         await websocket.close(code=4002, reason=f"Ошибка токена: {str(e)}")
         return
 

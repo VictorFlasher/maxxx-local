@@ -163,16 +163,18 @@ def ban_user(target_user_id: int) -> bool:
         release_db_connection(conn)
 
 
-def get_user_by_id(user_id: int) -> dict:
+def get_user_by_id(user_id: int) -> Optional[dict]:
     """
     Возвращает данные пользователя по ID.
 
-    Raises:
-        ValueError: если пользователь не найден
+    Returns:
+        dict с данными пользователя или None, если не найден
     """
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = None
+    cur = None
     try:
+        conn = get_db_connection()
+        cur = conn.cursor()
         cur.execute("""
             SELECT user_id, username, email, is_admin, is_banned
             FROM maxxx_local.users
@@ -180,7 +182,7 @@ def get_user_by_id(user_id: int) -> dict:
         """, (user_id,))
         row = cur.fetchone()
         if not row:
-            raise ValueError("Пользователь не найден")
+            return None
         return {
             "id": row[0],
             "username": row[1],
@@ -188,9 +190,16 @@ def get_user_by_id(user_id: int) -> dict:
             "is_admin": row[3],
             "is_banned": row[4]
         }
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка при получении пользователя {user_id}: {e}")
+        return None
     finally:
-        cur.close()
-        release_db_connection(conn)
+        if cur:
+            cur.close()
+        if conn:
+            release_db_connection(conn)
 
 def get_username(user_id: int) -> str:
     """Возвращает username по ID."""
