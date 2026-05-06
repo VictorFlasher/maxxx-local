@@ -96,8 +96,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # В production заменить на конкретные домены
     allow_credentials=False,  # Отключаем credentials для безопасности
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],  # Разрешаем все методы включая WebSocket
+    allow_headers=["*"],  # Разрешаем все заголовки включая Sec-WebSocket-*
 )
 
 def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
