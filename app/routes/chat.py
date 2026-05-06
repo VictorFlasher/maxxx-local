@@ -632,7 +632,8 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     """
     token = websocket.query_params.get("token")
     
-    logger.info(f"WebSocket уведомлений: получен запрос, token present={bool(token)}")
+    logger.info(f"WebSocket уведомлений: получен запрос, URL={websocket.url}, path={websocket.url.path}, query={websocket.url.query}")
+    logger.info(f"WebSocket уведомлений: token present={bool(token)}, headers={dict(websocket.headers)}")
     
     # Проверяем токен ДО принятия соединения
     if not token:
@@ -659,8 +660,12 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     
     # Теперь принимаем соединение после успешной валидации
     logger.info(f"WebSocket уведомлений: принимаем соединение для user_id={user_id}")
-    await websocket.accept()
-    logger.info(f"WebSocket уведомлений подключён: user_id={user_id}")
+    try:
+        await websocket.accept()
+        logger.info(f"WebSocket уведомлений подключён: user_id={user_id}, client_state={websocket.client_state}")
+    except Exception as accept_error:
+        logger.error(f"WebSocket уведомлений: ошибка при accept() - {type(accept_error).__name__}: {str(accept_error)}")
+        return
 
     # Увеличиваем счётчик подключений
     await increment_ws_limit(user_id)
