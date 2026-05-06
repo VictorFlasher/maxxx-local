@@ -435,7 +435,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             cur = conn.cursor()
             try:
                 cur.execute("""
-                    SELECT message_id, sender_id, text, file_path, created_at 
+                    SELECT message_id, sender_id, content, file_path, created_at 
                     FROM messages 
                     WHERE chat_id = %s AND message_id > %s 
                     ORDER BY message_id ASC
@@ -470,7 +470,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         "sender_id": sender_id,
                         "sender_username": sender_username,
                         "chat_type": chat_type,
-                        "text": text,
+                        "text": text if text else file_path,
                         "file_path": file_path,
                         "timestamp": created_at.isoformat() if created_at else None,
                     })
@@ -498,7 +498,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                 try:
                     cur.execute(
                         """
-                        INSERT INTO messages (chat_id, sender_id, text, created_at)
+                        INSERT INTO messages (chat_id, sender_id, content, created_at)
                         VALUES (%s, %s, %s, %s)
                         RETURNING message_id
                         """,
@@ -541,6 +541,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         "sender_username": sender_username,
                         "chat_type": chat_type,
                         "text": text,
+                        "file_path": None,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )

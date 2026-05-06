@@ -265,6 +265,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
             msg = {
                 "message_id": row[0],
                 "sender_id": row[1],
+                "sender_username": row[2],  # Всегда добавляем username
                 "content": row[3],
                 "encrypted_key": row[4],
                 "iv": row[5],
@@ -274,9 +275,6 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
                 "chat_type": "group" if is_group else "private"
             }
 
-            # Только для групповых чатов добавляем имя отправителя
-            if is_group:
-                msg["sender_username"] = row[2]
             result.append(msg)
 
         return result
