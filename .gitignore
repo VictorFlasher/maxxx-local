@@ -1,3 +1,4 @@
+```
 # Python
 __pycache__/
 *.py[cod]
@@ -19,6 +20,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Environment
 .venv/
@@ -40,38 +42,6 @@ ENV/
 .coverage
 coverage/
 htmlcov/
-
-# Testing
 .pytest_cache/
 .mypy_cache/
-
-# Distribution / packaging
-.pybuild/
-_*
-*.zip
-*.tar.gz
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-
-# OS generated files
-.DS_Store
-Thumbs.db
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Icon?
-Network Trash Folder
-Temporary Items
-.apdisk
-*.DS_Store
-.TemporaryItems
-.trash
-.Trash-*
-
-# Local configuration
-.env
-.env.local
-*.env.*
+```

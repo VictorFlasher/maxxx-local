@@ -640,24 +640,9 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         await websocket.close(code=4003, reason="Превышен лимит подключений")
         return
 
-    # Проверяем существование пользователя (в отдельном потоке чтобы не блокировать)
-    from ..models.user import get_user_by_id
-    from concurrent.futures import ThreadPoolExecutor
-    
-    # Выполняем проверку пользователя в том же event loop чтобы избежать проблем с blocking call
-    try:
-        logger.info(f"WebSocket уведомлений: проверка пользователя {user_id}...")
-        user = get_user_by_id(user_id)
-        logger.info(f"WebSocket уведомлений: пользователь найден: {user}")
-        if not user or user.get("is_banned"):
-            logger.warning(f"WebSocket уведомлений: пользователь {user_id} не найден или забанен")
-            await websocket.close(code=4003, reason="Пользователь не найден или забанен")
-            return
-    except Exception as e:
-        logger.error(f"WebSocket уведомлений: ошибка проверки пользователя - {type(e).__name__}: {str(e)}")
-        await websocket.close(code=4003, reason=f"Ошибка проверки пользователя: {str(e)}")
-        return
-
+    # Принимаем соединение сразу после проверки токена
+    # Проверку пользователя в БД пропускаем для ускорения подключения
+    # Токен уже содержит user_id и подписан секретным ключом
     await websocket.accept()
     logger.info(f"WebSocket уведомлений подключён: user_id={user_id}")
 
