@@ -30,8 +30,6 @@ __all__ = [
     'cache',
     'cache_lock',
     'INSTANCE_ID',
-    'notification_connections',
-    'notification_lock',
     'init_ws_manager',
     'close_ws_manager',
     'add_connection',
@@ -67,11 +65,6 @@ rate_limit_lock = asyncio.Lock()
 # Кэш данных: {key: {"value": Any, "expires_at": datetime}}
 cache: Dict[str, Dict[str, Any]] = {}
 cache_lock = asyncio.Lock()
-
-# Хранилище WebSocket уведомлений: {user_id: websocket}
-from fastapi import WebSocket
-notification_connections: Dict[int, WebSocket] = {}
-notification_lock = asyncio.Lock()
 
 # Уникальный ID экземпляра приложения
 INSTANCE_ID = f"instance-{id(asyncio.get_event_loop())}"
@@ -205,13 +198,6 @@ async def is_user_online(user_id: int) -> bool:
     chats = await get_user_online_chats(user_id)
     if len(chats) > 0:
         return True
-    
-    # Проверяем подключения уведомлений
-    async with notification_lock:
-        if user_id in notification_connections:
-            ws = notification_connections.get(user_id)
-            if ws and ws.client_state.name == "CONNECTED":
-                return True
     
     return False
 
