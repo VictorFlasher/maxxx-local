@@ -106,9 +106,10 @@ async def security_headers_middleware(request: Request, call_next):
 # Добавляем CORS middleware с ограниченными настройками
 # Важно: allow_origins должен содержать точные origin, с которых работает фронтенд
 # Для WebSocket критически важно разрешить заголовки Sec-WebSocket-Protocol
+# ПРИМЕЧАНИЕ: allow_origins=["*"] с allow_credentials=True может не работать в некоторых браузерах для WebSocket
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],  # В production заменить на конкретные домены
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],  # Явно указываем origins для WebSocket
     allow_credentials=True,  # Включаем credentials для WebSocket
     allow_methods=["*"],  # Разрешаем все методы включая WebSocket
     allow_headers=["*"],  # Разрешаем все заголовки включая Sec-WebSocket-*
