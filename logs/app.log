@@ -545,5 +545,5 @@ connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection re
 2026-04-28 11:20:08 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
 2026-04-28 11:20:27 - app.routes.chat - INFO - WebSocket подключён: user_id=1, chat_id=14
 2026-04-28 11:22:45 - app.routes.auth - INFO - Успешный вход пользователя: admin@example.com (ID: 1)
-2026-04-28 11:27:31 - app.utils.ws_manager - INFO - Менеджер WebSocket остановлен
-2026-04-28 11:27:31 - main - INFO - Приложение остановлено
+2026-04-28 11:27:31 - app.utils.ws_man  ager - INFO - Менеджер WebSocket остановлен
+2026-04-28 11:27:31 - main - INFO - Приложение остановuлено
