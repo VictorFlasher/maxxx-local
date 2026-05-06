@@ -186,7 +186,7 @@ async def get_user_online_chats(user_id: int) -> Set[int]:
 
 async def is_user_online(user_id: int) -> bool:
     """
-    Проверяет, онлайн ли пользователь (есть ли активные чаты).
+    Проверяет, онлайн ли пользователь (есть ли активные чаты или подключения уведомлений).
     
     Args:
         user_id: ID пользователя
@@ -194,8 +194,20 @@ async def is_user_online(user_id: int) -> bool:
     Returns:
         True если онлайн
     """
+    # Проверяем чатовые подключения
     chats = await get_user_online_chats(user_id)
-    return len(chats) > 0
+    if len(chats) > 0:
+        return True
+    
+    # Проверяем подключения уведомлений
+    from app.routes.chat import notification_connections
+    async with notification_lock:
+        if user_id in notification_connections:
+            ws = notification_connections.get(user_id)
+            if ws and ws.client_state.name == "CONNECTED":
+                return True
+    
+    return False
 
 
 # === Rate Limiting для WebSocket ===

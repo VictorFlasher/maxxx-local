@@ -632,39 +632,42 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     """
     token = websocket.query_params.get("token")
     
-    logger.info(f"WebSocket уведомлений: получен запрос, URL={websocket.url}, path={websocket.url.path}, query={websocket.url.query}")
-    logger.info(f"WebSocket уведомлений: token present={bool(token)}, headers={dict(websocket.headers)}")
+    logger.info(f"🔔 WebSocket уведомлений: получен запрос, URL={websocket.url}, path={websocket.url.path}, query={websocket.url.query}")
+    logger.info(f"🔔 WebSocket уведомлений: token present={bool(token)}, headers={dict(websocket.headers)}")
     
     # Проверяем токен ДО принятия соединения
     if not token:
-        logger.warning("WebSocket уведомлений: токен не указан")
+        logger.warning("🔔 WebSocket уведомлений: токен не указан")
         await websocket.close(code=4001, reason="Токен не указан")
         return
 
     user_id = None
     try:
-        logger.info(f"WebSocket уведомлений: попытка декодировать токен")
+        logger.info(f"🔔 WebSocket уведомлений: попытка декодировать токен")
         # Используем функцию get_current_user из импортов в начале файла
         user_id = get_current_user(token)
-        logger.info(f"WebSocket уведомлений: токен декодирован, user_id={user_id}")
+        logger.info(f"🔔 WebSocket уведомлений: токен декодирован, user_id={user_id}")
     except Exception as e:
-        logger.error(f"WebSocket уведомлений: ошибка валидации токена - {type(e).__name__}: {str(e)}")
+        logger.error(f"🔔 WebSocket уведомлений: ошибка валидации токена - {type(e).__name__}: {str(e)}")
         await websocket.close(code=4002, reason=f"Ошибка токена: {str(e)}")
         return
 
     # Проверяем лимит подключений (для уведомлений отдельный лимит)
     if not await check_ws_rate_limit(user_id, max_connections=10):
-        logger.warning(f"WebSocket уведомлений: превышен лимит подключений для user_id={user_id}")
+        logger.warning(f"🔔 WebSocket уведомлений: превышен лимит подключений для user_id={user_id}")
         await websocket.close(code=4003, reason="Превышен лимит подключений")
         return
     
     # Теперь принимаем соединение после успешной валидации
-    logger.info(f"WebSocket уведомлений: принимаем соединение для user_id={user_id}")
+    logger.info(f"🔔 WebSocket уведомлений: принимаем соединение для user_id={user_id}")
     try:
         await websocket.accept()
-        logger.info(f"WebSocket уведомлений подключён: user_id={user_id}, client_state={websocket.client_state}")
+        logger.info(f"🔔 WebSocket уведомлений подключён: user_id={user_id}, client_state={websocket.client_state}")
     except Exception as accept_error:
-        logger.error(f"WebSocket уведомлений: ошибка при accept() - {type(accept_error).__name__}: {str(accept_error)}")
+        logger.error(f"🔔 WebSocket уведомлений: ошибка при accept() - {type(accept_error).__name__}: {str(accept_error)}")
+        # Добавляем детальное логирование перед возвратом
+        import traceback
+        logger.error(f"🔔 WebSocket уведомлений: traceback accept error: {traceback.format_exc()}")
         return
 
     # Увеличиваем счётчик подключений
