@@ -234,10 +234,6 @@ async def _notify_users(chat_id: int, message: dict) -> None:
                 pass
 
 
-# Глобальное хранилище для WebSocket уведомлений импортируется из ws_manager
-from app.utils.ws_manager import notification_connections, notification_lock
-
-
 async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
     """
     Рассылает уведомление об изменении статуса пользователя во все его чаты.
@@ -291,19 +287,6 @@ async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
                     })
                 except Exception:
                     pass
-            
-            # Также отправляем через глобальное уведомление если есть
-            async with notification_lock:
-                notification_ws = notification_connections.get(member_id)
-                if notification_ws:
-                    try:
-                        await notification_ws.send_json({
-                            "type": "user_status",
-                            "user_id": user_id,
-                            "status": status
-                        })
-                    except Exception:
-                        pass
 
 
 async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_type: str) -> None:
@@ -368,26 +351,6 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
     
     # Уведомляем через обычный WS чата
     await _notify_users(chat_id, message_data)
-    
-    # 3. Отправляем уведомление через глобальный WS всем получателям
-    members = _get_chat_members(chat_id)
-    for member_id in members:
-        if member_id != user_id:
-            # Отправляем через глобальное хранилище уведомлений
-            async with notification_lock:
-                notification_ws = notification_connections.get(member_id)
-                if notification_ws:
-                    try:
-                        from fastapi.websockets import WebSocketState
-                        if notification_ws.client_state == WebSocketState.CONNECTED:
-                            await notification_ws.send_json({
-                                "type": "new_message",
-                                "chat_id": chat_id,
-                                "sender_id": user_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            })
-                    except Exception:
-                        pass
 
 # === WebSocket-маршрут ===
 @router.websocket("/ws/{chat_id}")
@@ -564,28 +527,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                     },
                 )
 
-                # === 4. Отправляем уведомление через глобальный WS всем получателям ===
-                # Получаем всех участников чата кроме отправителя
-                members = _get_chat_members(chat_id)
-                for member_id in members:
-                    if member_id != user_id:
-                        # Отправляем уведомление через глобальное хранилище уведомлений
-                        async with notification_lock:
-                            notification_ws = notification_connections.get(member_id)
-                            if notification_ws:
-                                try:
-                                    from fastapi.websockets import WebSocketState
-                                    if notification_ws.client_state == WebSocketState.CONNECTED:
-                                        await notification_ws.send_json({
-                                            "type": "new_message",
-                                            "chat_id": chat_id,
-                                            "sender_id": user_id,
-                                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                                        })
-                                except Exception:
-                                    pass
-
-                # === 5. Обновляем последнее прочитанное сообщение для отправителя ===
+                # === 4. Обновляем последнее прочитанное сообщение для отправителя ===
                 from ..models.chat import update_last_read_message
                 update_last_read_message(user_id, chat_id, message_id)
 
@@ -621,145 +563,6 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                 if not is_online:
                     # Уведомляем об оффлайне только если пользователь полностью оффлайн
                     await _broadcast_status_to_all_chats(user_id, "offline")
-
-@router.websocket("/ws/notifications")
-async def websocket_notifications_endpoint(websocket: WebSocket):
-    """
-    Глобальный WebSocket endpoint для уведомлений о новых сообщениях во всех чатах пользователя.
-    Работает независимо от открытых чатов, позволяет получать уведомления даже когда ни один чат не открыт.
-    Токен передаётся как ?token=...
-    """
-    token = websocket.query_params.get("token")
-    
-    logger.info(f"🔔 WebSocket уведомлений: получен запрос, URL={websocket.url}, path={websocket.url.path}, query={websocket.url.query}")
-    logger.info(f"🔔 WebSocket уведомлений: token present={bool(token)}, headers={dict(websocket.headers)}")
-    
-    # Проверяем токен ДО принятия соединения
-    if not token:
-        logger.warning("🔔 WebSocket уведомлений: токен не указан")
-        await websocket.close(code=4001, reason="Токен не указан")
-        return
-
-    user_id = None
-    try:
-        logger.info(f"🔔 WebSocket уведомлений: попытка декодировать токен")
-        # Используем функцию get_current_user из импортов в начале файла
-        user_id = get_current_user(token)
-        logger.info(f"🔔 WebSocket уведомлений: токен декодирован, user_id={user_id}")
-    except Exception as e:
-        logger.error(f"🔔 WebSocket уведомлений: ошибка валидации токена - {type(e).__name__}: {str(e)}")
-        await websocket.close(code=4002, reason=f"Ошибка токена: {str(e)}")
-        return
-
-    # Проверяем лимит подключений (для уведомлений отдельный лимит)
-    if not await check_ws_rate_limit(user_id, max_connections=10):
-        logger.warning(f"🔔 WebSocket уведомлений: превышен лимит подключений для user_id={user_id}")
-        await websocket.close(code=4003, reason="Превышен лимит подключений")
-        return
-    
-    # Теперь принимаем соединение после успешной валидации
-    logger.info(f"🔔 WebSocket уведомлений: принимаем соединение для user_id={user_id}")
-    try:
-        await websocket.accept()
-        logger.info(f"🔔 WebSocket уведомлений подключён: user_id={user_id}, client_state={websocket.client_state}")
-    except Exception as accept_error:
-        logger.error(f"🔔 WebSocket уведомлений: ошибка при accept() - {type(accept_error).__name__}: {str(accept_error)}")
-        # Добавляем детальное логирование перед возвратом
-        import traceback
-        logger.error(f"🔔 WebSocket уведомлений: traceback accept error: {traceback.format_exc()}")
-        return
-
-    # Увеличиваем счётчик подключений
-    await increment_ws_limit(user_id)
-
-    # Регистрируем подключение в глобальном хранилище уведомлений
-    async with notification_lock:
-        # Закрываем предыдущее соединение если оно было
-        old_ws = notification_connections.get(user_id)
-        if old_ws:
-            try:
-                from fastapi.websockets import WebSocketState
-                if old_ws.client_state == WebSocketState.CONNECTED:
-                    await old_ws.close(code=1000, reason="Новое подключение")
-            except Exception:
-                pass
-        notification_connections[user_id] = websocket
-    
-    # Логируем событие подключения
-    try:
-        from ..models.chat import log_connection_event
-        log_connection_event(user_id, 'connect')
-    except Exception as e:
-        logger.error(f"Ошибка логирования connect: {str(e)}")
-
-    # Отправляем подтверждение подключения клиенту
-    try:
-        await websocket.send_json({"type": "connected", "user_id": user_id})
-    except Exception as e:
-        logger.error(f"Ошибка отправки подтверждения подключения: {e}")
-
-    # Уведомление о входе (онлайн) - рассылаем во ВСЕ чаты пользователя
-    try:
-        await _broadcast_status_to_all_chats(user_id, "online")
-    except Exception as e:
-        logger.error(f"Ошибка отправки уведомления об онлайн статусе: {e}")
-
-    try:
-        while True:
-            # Отправляем ping для поддержания соединения
-            try:
-                await websocket.send_json({"type": "ping"})
-            except Exception:
-                break
-            
-            await asyncio.sleep(30)
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket уведомлений: клиент отключился: user_id={user_id}")
-    except Exception as e:
-        logger.error(f"WebSocket уведомлений: ошибка соединения: {type(e).__name__}: {str(e)}")
-    finally:
-        # Уменьшаем счётчик подключений
-        await decrement_ws_limit(user_id)
-        
-        # Удаляем из глобального хранилища
-        async with notification_lock:
-            notification_connections.pop(user_id, None)
-        
-        # Логируем событие отключения
-        try:
-            from ..models.chat import log_connection_event
-            log_connection_event(user_id, 'disconnect')
-        except Exception as e:
-            logger.error(f"Ошибка логирования disconnect: {str(e)}")
-        
-        # Проверяем, есть ли у пользователя другие активные подключения
-        is_online = await is_user_online(user_id)
-        if not is_online:
-            await _broadcast_status_to_all_chats(user_id, "offline")
-        
-        logger.info(f"WebSocket уведомлений отключён: user_id={user_id}")
-
-
-# === Функция для отправки уведомлений всем подключенным клиентам пользователя ===
-async def send_notification_to_user(user_id: int, message: dict):
-    """
-    Отправляет уведомление пользователю через глобальный WebSocket уведомлений.
-    
-    Args:
-        user_id: ID пользователя
-        message: Сообщение для отправки
-    """
-    # Отправляем через глобальное хранилище уведомлений
-    async with notification_lock:
-        notification_ws = notification_connections.get(user_id)
-        if notification_ws:
-            try:
-                from fastapi.websockets import WebSocketState
-                if notification_ws.client_state == WebSocketState.CONNECTED:
-                    await notification_ws.send_json(message)
-            except Exception:
-                pass
 
 
 # === HTTP-маршруты ===

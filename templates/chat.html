@@ -844,156 +844,6 @@
         // Хранилище активных WebSocket соединений по chat_id
         const wsConnections = {};
         
-        // Глобальное WebSocket соединение для уведомлений о новых сообщениях (работает всегда)
-        let globalNotificationWs = null;
-        let globalWsReconnectAttempts = 0;
-        const maxGlobalWsReconnectAttempts = 10;
-        let globalWsReconnectTimer = null;
-
-        // Подключаем глобальное WebSocket для получения уведомлений о новых сообщениях во всех чатах
-        function connectGlobalNotificationWebSocket() {
-            // Очищаем предыдущий таймер переподключения
-            if (globalWsReconnectTimer) {
-                clearTimeout(globalWsReconnectTimer);
-                globalWsReconnectTimer = null;
-            }
-            
-            // Если уже подключено - не подключаемся снова
-            if (globalNotificationWs && globalNotificationWs.readyState === WebSocket.OPEN) {
-                console.log('✅ Глобальный WS уведомлений уже подключён');
-                return;
-            }
-            
-            if (globalNotificationWs) {
-                globalNotificationWs.close();
-                globalNotificationWs = null;
-            }
-
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsHost = window.location.host || '127.0.0.1:8000';
-            const wsUrl = `${protocol}//${wsHost}/api/ws/notifications?token=${token}`;
-            
-            console.log(`🔌 Подключение к глобальному WebSocket уведомлений: ${wsUrl}`);
-            
-            try {
-                globalNotificationWs = new WebSocket(wsUrl);
-
-                globalNotificationWs.onopen = () => {
-                    console.log('✅ Глобальный WS уведомлений подключён');
-                    globalWsReconnectAttempts = 0;
-                    hideConnectionStatus();
-                    // Обновляем статус онлайн при успешном подключении
-                    updateOnlineStatusFromWS(true);
-                };
-
-                globalNotificationWs.onclose = (event) => {
-                    console.log(`❌ Глобальный WS уведомлений отключён: код ${event.code}, причина: ${event.reason || '(пусто)'}`);
-                    globalNotificationWs = null;
-                    
-                    // Логируем детальную информацию для отладки
-                    if (event.code === 4001) {
-                        console.error('⚠️ Ошибка 4001: Токен не указан');
-                    } else if (event.code === 4002) {
-                        console.error('⚠️ Ошибка 4002: Неверный токен или истёк срок действия');
-                    } else if (event.code === 4003) {
-                        console.error('⚠️ Ошибка 4003: Превышен лимит подключений');
-                    }
-                    
-                    // Не пытаемся переподключиться если код 1000 (нормальное закрытие)
-                    if (event.code === 1000) {
-                        console.log('ℹ️ Глобальный WS закрыт нормально, не переподключаемся');
-                        return;
-                    }
-                    
-                    // Автоматическое переподключение с экспоненциальной задержкой
-                    if (globalWsReconnectAttempts < maxGlobalWsReconnectAttempts) {
-                        globalWsReconnectAttempts++;
-                        const delay = Math.min(1000 * Math.pow(2, globalWsReconnectAttempts), 30000);
-                        showConnectionStatus('reconnecting', `Переподключение уведомлений... (попытка ${globalWsReconnectAttempts}/${maxGlobalWsReconnectAttempts})`);
-                        
-                        globalWsReconnectTimer = setTimeout(() => {
-                            console.log(`🔄 Попытка переподключения #${globalWsReconnectAttempts}`);
-                            connectGlobalNotificationWebSocket();
-                        }, delay);
-                    } else {
-                        showConnectionStatus('disconnected', 'Не удалось подключить уведомления. Перезагрузите страницу.');
-                        updateOnlineStatusFromWS(false);
-                    }
-                };
-
-                globalNotificationWs.onerror = (err) => {
-                    console.error('⚠️ Ошибка глобального WS уведомлений:', err);
-                    // Не показываем ошибку сразу, ждём onclose
-                };
-
-                globalNotificationWs.onmessage = (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        console.log('📬 Получено уведомление через глобальный WS:', msg);
-                        
-                        // Обработка подтверждения подключения
-                        if (msg.type === 'connected') {
-                            console.log('✅ Сервер подтвердил подключение глобального WS');
-                            updateOnlineStatusFromWS(true);
-                        }
-                        
-                        // Обработка ping от сервера
-                        if (msg.type === 'ping') {
-                            // Просто игнорируем ping, соединение активно
-                            return;
-                        }
-                        
-                        // Обработка уведомления о новом сообщении
-                        if (msg.type === 'new_message') {
-                            const chatId = msg.chat_id;
-                            const senderId = msg.sender_id;
-                            
-                            console.log(`🔔 Уведомление о новом сообщении в чате ${chatId} от пользователя ${senderId}`);
-                            
-                            // Если это сообщение не в текущем открытом чате - увеличиваем счётчик и показываем уведомление
-                            if (chatId !== currentChatId) {
-                                unreadCounts[chatId] = (unreadCounts[chatId] || 0) + 1;
-                                updateUnreadBadge(chatId);
-                                console.log(`🔔 Новое сообщение в чате ${chatId}, счётчик: ${unreadCounts[chatId]}`);
-                                
-                                // Показываем браузерное уведомление если разрешено
-                                if ('Notification' in window && Notification.permission === 'granted') {
-                                    new Notification('Новое сообщение', {
-                                        body: `Вам пришло новое сообщение в чате #${chatId}`,
-                                        icon: '/static/icon.png',
-                                        tag: `chat-${chatId}`
-                                    });
-                                }
-                            }
-                            // Если сообщение в текущем чате - оно придёт через обычный WS чата
-                        }
-                        
-                        // Обработка изменения статуса пользователя
-                        if (msg.type === 'user_status') {
-                            const userId = msg.user_id;
-                            const status = msg.status;
-                            onlineStatus[userId] = (status === 'online');
-                            updateAllOnlineIndicators();
-                        }
-                    } catch (e) {
-                        console.error('Ошибка обработки сообщения глобального WS:', e);
-                    }
-                };
-            } catch (e) {
-                console.error('Критическая ошибка при создании WebSocket:', e);
-                showConnectionStatus('error', 'Ошибка создания WebSocket');
-            }
-        }
-        
-        // Функция обновления статуса онлайн на основе состояния WebSocket
-        function updateOnlineStatusFromWS(isOnline) {
-            // Помечаем текущего пользователя как онлайн/оффлайн
-            if (currentUserId) {
-                onlineStatus[currentUserId] = isOnline;
-                updateAllOnlineIndicators();
-            }
-        }
-
         async function openChat(chatId) {
             // Закрываем предыдущее WebSocket соединение для этого чата если оно есть
             if (wsConnections[chatId]) {
@@ -1559,8 +1409,6 @@
             document.addEventListener('DOMContentLoaded', async () => {
                 await loadChats();
                 await loadOnlineStatus();
-                // Подключаем глобальный WebSocket для уведомлений
-                connectGlobalNotificationWebSocket();
                 // Если в URL был указан chat_id, открываем этот чат после загрузки списка
                 if (initialChatId) {
                     const chatIdNum = parseInt(initialChatId);
@@ -1574,8 +1422,6 @@
             (async () => {
                 await loadChats();
                 await loadOnlineStatus();
-                // Подключаем глобальный WebSocket для уведомлений
-                connectGlobalNotificationWebSocket();
                 // Если в URL был указан chat_id, открываем этот чат после загрузки списка
                 if (initialChatId) {
                     const chatIdNum = parseInt(initialChatId);
