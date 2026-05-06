@@ -31,6 +31,7 @@ ENV/
 .idea/
 *.swp
 *.swo
+*.tmp
 
 # Logs
 *.log
@@ -45,11 +46,32 @@ htmlcov/
 .mypy_cache/
 
 # Distribution / packaging
-.Python
-__pycache__/
-*.py[cod]
-*$py.class
+.pybuild/
+_*
+*.zip
+*.tar.gz
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
 
-# System
+# OS generated files
 .DS_Store
 Thumbs.db
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Icon?
+Network Trash Folder
+Temporary Items
+.apdisk
+*.DS_Store
+.TemporaryItems
+.trash
+.Trash-*
+
+# Local configuration
+.env
+.env.local
+*.env.*
