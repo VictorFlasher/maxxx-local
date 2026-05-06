@@ -21,7 +21,7 @@ if not os.getenv("DB_PASS"):
     raise RuntimeError("Пароль базы данных должен быть установлен через переменную окружения DB_PASS!")
 
 # Имя схемы берётся из переменной окружения
-SCHEMA_NAME = os.getenv("DB_SCHEMA", "maxxx")
+SCHEMA_NAME = os.getenv("DB_SCHEMA", "maxxx_local")
 
 # === Пул соединений ===
 # Глобальный пул соединений для производительности
