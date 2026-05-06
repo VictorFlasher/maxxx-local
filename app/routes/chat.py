@@ -234,9 +234,8 @@ async def _notify_users(chat_id: int, message: dict) -> None:
                 pass
 
 
-# Глобальное хранилище для WebSocket уведомлений (user_id -> WebSocket)
-notification_connections: Dict[int, WebSocket] = {}
-notification_lock = asyncio.Lock()
+# Глобальное хранилище для WebSocket уведомлений импортируется из ws_manager
+from app.utils.ws_manager import notification_connections, notification_lock
 
 
 async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
