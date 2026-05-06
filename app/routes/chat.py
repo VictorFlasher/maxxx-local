@@ -630,11 +630,14 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     Работает независимо от открытых чатов, позволяет получать уведомления даже когда ни один чат не открыт.
     Токен передаётся как ?token=...
     """
+    # Сначала принимаем соединение, иначе клиент получит 403 до открытия WS
+    await websocket.accept()
+    
     token = websocket.query_params.get("token")
     
     logger.info(f"WebSocket уведомлений: получен запрос, token present={bool(token)}")
     
-    # Проверяем токен ДО принятия соединения
+    # Проверяем токен ПОСЛЕ принятия соединения
     if not token:
         logger.warning("WebSocket уведомлений: токен не указан")
         await websocket.close(code=4001, reason="Токен не указан")
