@@ -689,7 +689,9 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
             await asyncio.sleep(30)
 
     except WebSocketDisconnect:
-        pass
+        logger.info(f"WebSocket уведомлений: клиент отключился: user_id={user_id}")
+    except Exception as e:
+        logger.error(f"WebSocket уведомлений: ошибка соединения: {type(e).__name__}: {str(e)}")
     finally:
         # Удаляем из глобального хранилища
         async with notification_lock:
