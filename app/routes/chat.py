@@ -1249,18 +1249,7 @@ def report_message(
         if chat_type == 'private' and sender_id == current_user_id:
             raise HTTPException(status_code=400, detail="Нельзя пожаловаться на своё сообщение")
         
-        # Нельзя пожаловаться на сообщение админа (если текущий пользователь не админ)
-        if sender_is_admin:
-            # Проверяем, является ли текущий пользователь админом
-            cur.execute("SELECT is_admin FROM users WHERE user_id = %s", (current_user_id,))
-            current_user_is_admin = cur.fetchone()[0]
-            if not current_user_is_admin:
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Нельзя пожаловаться на сообщение администратора"
-                )
-        
-        # Сохраняем жалобу
+        # Сохраняем жалобу (теперь можно жаловаться на всех, включая админов)
         cur.execute(
             """
             INSERT INTO message_reports (message_id, reporter_id, reason, created_at)
