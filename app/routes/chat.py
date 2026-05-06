@@ -632,6 +632,8 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     """
     token = websocket.query_params.get("token")
     
+    logger.info(f"WebSocket уведомлений: получен запрос, token present={bool(token)}")
+    
     # Проверяем токен ДО принятия соединения
     if not token:
         logger.warning("WebSocket уведомлений: токен не указан")
@@ -651,10 +653,12 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
 
     # Проверяем лимит подключений (для уведомлений отдельный лимит)
     if not await check_ws_rate_limit(user_id, max_connections=10):
+        logger.warning(f"WebSocket уведомлений: превышен лимит подключений для user_id={user_id}")
         await websocket.close(code=4003, reason="Превышен лимит подключений")
         return
     
     # Теперь принимаем соединение после успешной валидации
+    logger.info(f"WebSocket уведомлений: принимаем соединение для user_id={user_id}")
     await websocket.accept()
     logger.info(f"WebSocket уведомлений подключён: user_id={user_id}")
 
