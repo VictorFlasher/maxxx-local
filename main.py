@@ -47,7 +47,13 @@ async def security_headers_middleware(request: Request, call_next):
     - XSS (X-XSS-Protection, X-Content-Type-Options)
     - Clickjacking (X-Frame-Options)
     - MIME sniffing (X-Content-Type-Options)
+    
+    Примечание: Не применяется к WebSocket подключениям.
     """
+    # Пропускаем WebSocket запросы — они обрабатываются отдельно
+    if request.scope.get("type") == "websocket":
+        return await call_next(request)
+    
     response = await call_next(request)
 
     # Content Security Policy

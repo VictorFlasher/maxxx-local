@@ -1,4 +1,4 @@
-```
+```python
 # Python
 __pycache__/
 *.py[cod]
@@ -20,28 +20,48 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# Environment
-.venv/
+# Virtual environments
 venv/
-env/
 ENV/
+.env/
+.venv/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
 
 # Logs
 *.log
+
+# Environment variables
+.env
+.env.local
+*.env.*
 
 # Coverage
 .coverage
 coverage/
 htmlcov/
+
+# Testing
 .pytest_cache/
 .mypy_cache/
+.hypothesis/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*~
+```
+
+Wait, let me reconsider. The only modified file is `main.py`, which is a source file. There are no build artifacts, dependency directories, or temporary files in the changes. Following rule #6, if the changes contain only source files and no build artifacts, dependencies, or temp files, I should output an empty .gitignore.
+
+```python
+
 ```
