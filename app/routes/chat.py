@@ -633,14 +633,13 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     """
     token = websocket.query_params.get("token")
     
-    # Сначала принимаем соединение, затем проверяем токен
-    await websocket.accept()
-    
+    # Проверяем токен ДО принятия соединения
     if not token:
         logger.warning("WebSocket уведомлений: токен не указан")
         await websocket.close(code=4001, reason="Токен не указан")
         return
 
+    user_id = None
     try:
         logger.info(f"WebSocket уведомлений: попытка декодировать токен")
         # Декодируем токен напрямую, чтобы избежать проблем с импортом get_current_user
@@ -664,6 +663,9 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     if not await check_ws_rate_limit(user_id, max_connections=10):
         await websocket.close(code=4003, reason="Превышен лимит подключений")
         return
+    
+    # Теперь принимаем соединение после успешной валидации
+    await websocket.accept()
     logger.info(f"WebSocket уведомлений подключён: user_id={user_id}")
 
     # Увеличиваем счётчик подключений
@@ -690,10 +692,16 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         logger.error(f"Ошибка логирования connect: {str(e)}")
 
     # Отправляем подтверждение подключения клиенту
-    await websocket.send_json({"type": "connected", "user_id": user_id})
+    try:
+        await websocket.send_json({"type": "connected", "user_id": user_id})
+    except Exception as e:
+        logger.error(f"Ошибка отправки подтверждения подключения: {e}")
 
     # Уведомление о входе (онлайн) - рассылаем во ВСЕ чаты пользователя
-    await _broadcast_status_to_all_chats(user_id, "online")
+    try:
+        await _broadcast_status_to_all_chats(user_id, "online")
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления об онлайн статусе: {e}")
 
     try:
         while True:
