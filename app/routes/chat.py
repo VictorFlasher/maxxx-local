@@ -630,6 +630,7 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
     Работает независимо от открытых чатов, позволяет получать уведомления даже когда ни один чат не открыт.
     Токен передаётся как ?token=...
     """
+    await websocket.accept()
     token = websocket.query_params.get("token")
     
     logger.info(f"WebSocket уведомлений: получен запрос, token present={bool(token)}")
