@@ -1,34 +1,67 @@
 ```
-# Python
+# Database migration artifacts
+*.sql
+
+# Python specific
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.local
+.env
+.env.local
+.env.*
+.venv/
+venv/
+ENV/
+env.bak/
+.ENV.bak/
 
-# Logs and temp files
+# Logs
+*.log
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.coverage.*
+.nyc_output/
+istanbul/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# Build and distribution
+dist/
+build/
+*.egg-info/
+.tox/
+.coverage*
+nosetests.xml
+coverage.xml
+*.cover
 *.log
 *.tmp
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Build artifacts
-dist/
-build/
-target/
-
-# Editors
-.vscode/
-.idea/
-
-# System files
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 ```

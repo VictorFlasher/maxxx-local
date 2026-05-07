@@ -458,7 +458,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             cur = conn.cursor()
             try:
                 cur.execute("""
-                    SELECT message_id, sender_id, content, file_path, created_at 
+                    SELECT message_id, sender_id, content, file_path, file_type, created_at 
                     FROM maxxx_local.messages 
                     WHERE chat_id = %s AND message_id > %s 
                     ORDER BY message_id ASC
@@ -466,7 +466,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                 missed_messages = cur.fetchall()
                 
                 for msg in missed_messages:
-                    msg_id, sender_id, text, file_path, created_at = msg
+                    msg_id, sender_id, text, file_path, file_type, created_at = msg
                     # Кэшируем тип чата
                     chat_type_cache_key = f"chat_type:{chat_id}"
                     chat_type_cached = await cache_get(chat_type_cache_key)
@@ -495,6 +495,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         "chat_type": chat_type,
                         "text": text if text else file_path,
                         "file_path": file_path,
+                        "file_type": file_type,
                         "timestamp": created_at.isoformat() if created_at else None,
                     })
             finally:
