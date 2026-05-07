@@ -257,7 +257,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         is_group = row[0]
         
         cur.execute("""
-            SELECT m.message_id, m.sender_id, u.username, m.content, m.created_at, m.is_edited, m.edited_at, m.file_path, m.file_type
+            SELECT m.message_id, m.sender_id, u.username, m.content, m.created_at, m.is_edited, m.edited_at, m.file_path, m.file_type, m.original_filename
             FROM maxxx_local.messages m
             JOIN maxxx_local.users u ON m.sender_id = u.user_id
             WHERE m.chat_id = %s
@@ -268,7 +268,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         rows = cur.fetchall()
         result = []
         for row in rows:
-            message_id, sender_id, username, content, created_at, is_edited, edited_at, file_path, file_type = row
+            message_id, sender_id, username, content, created_at, is_edited, edited_at, file_path, file_type, original_filename = row
             
             # Если file_path не заполнен, но content содержит формат "[Файл]: URL", извлекаем путь
             if not file_path and content and content.startswith('[Файл]: '):
@@ -289,7 +289,8 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
                 "edited_at": edited_at.isoformat() if edited_at else None,
                 "chat_type": "group" if is_group else "private",
                 "file_path": file_path,
-                "file_type": file_type
+                "file_type": file_type,
+                "original_filename": original_filename
             }
 
             result.append(msg)

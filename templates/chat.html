@@ -941,6 +941,8 @@
                 // Обработка файла
                 if (msg.file_path) {
                     const ext = msg.file_type || '';
+                    const originalName = msg.original_filename || 'Файл';
+                    
                     if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
                         const img = document.createElement('img');
                         img.src = msg.file_path;
@@ -950,8 +952,11 @@
                     } else {
                         const link = document.createElement('a');
                         link.href = msg.file_path;
-                        link.download = '';
-                        link.textContent = '📎 Скачать файл';
+                        link.download = originalName;
+                        link.textContent = originalName;
+                        link.style.color = '#0066cc';
+                        link.style.textDecoration = 'underline';
+                        link.style.cursor = 'pointer';
                         div.appendChild(link);
                     }
                 }
@@ -1090,6 +1095,8 @@
                             // Обработка файла
                             if (msg.file_path) {
                                 const ext = msg.file_type || '';
+                                const originalName = msg.original_filename || 'Файл';
+                                
                                 if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
                                     const img = document.createElement('img');
                                     img.src = msg.file_path;
@@ -1099,8 +1106,11 @@
                                 } else {
                                     const link = document.createElement('a');
                                     link.href = msg.file_path;
-                                    link.download = '';
-                                    link.textContent = '📎 Скачать файл';
+                                    link.download = originalName;
+                                    link.textContent = originalName;
+                                    link.style.color = '#0066cc';
+                                    link.style.textDecoration = 'underline';
+                                    link.style.cursor = 'pointer';
                                     div.appendChild(link);
                                 }
                             }
