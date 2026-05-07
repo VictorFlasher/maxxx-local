@@ -37,14 +37,16 @@ CREATE TABLE IF NOT EXISTS chat_members (
     PRIMARY KEY (chat_id, user_id)
 );
 
--- Таблица сообщений
+-- Таблица сообщений (с поддержкой файлов)
 CREATE TABLE IF NOT EXISTS messages (
     message_id SERIAL PRIMARY KEY,
     chat_id INTEGER REFERENCES chats(chat_id) ON DELETE CASCADE,
     sender_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-    content TEXT NOT NULL,
+    content TEXT,  -- Может быть NULL для файловых сообщений
     encrypted_key BYTEA,
     iv BYTEA,
+    file_path VARCHAR(500),  -- Путь к файлу
+    file_type VARCHAR(50),   -- Тип файла (расширение)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_edited BOOLEAN DEFAULT FALSE,
     edited_at TIMESTAMP WITH TIME ZONE
