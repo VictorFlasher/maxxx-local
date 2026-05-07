@@ -844,6 +844,64 @@
         // Хранилище активных WebSocket соединений по chat_id
         const wsConnections = {};
         
+        // Функция для открытия модального окна с изображением (глобальная область видимости)
+        function openImageModal(src, filename) {
+            // Закрываем предыдущее модальное окно если есть
+            const existingModal = document.getElementById('imageModal');
+            if (existingModal) existingModal.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'imageModal';
+            modal.style.cssText = 'display:block; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.9);';
+            modal.innerHTML = `
+                <span class="close" style="position:absolute; top:15px; right:35px; color:#f1f1f1; font-size:40px; font-weight:bold; cursor:pointer;">&times;</span>
+                <img class="modal-content" id="modalImg" style="margin:auto; display:block; max-width:90%; max-height:90%; margin-top:5%;">
+                <div id="caption" style="margin:-20px auto 0; display:block; width:80%; max-width:700px; text-align:center; color:#ccc; padding:10px 0; height:150px;"></div>
+                <div style="text-align:center; margin-top:10px;">
+                    <a id="downloadLink" href="${src}" download="${filename}" style="color:#4CAF50; text-decoration:none; margin:0 10px; border:1px solid #4CAF50; padding:8px 16px; border-radius:4px;">Скачать оригинал</a>
+                    <button id="copyLinkBtn" style="color:#fff; background:#2196F3; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin:0 10px;">Копировать ссылку</button>
+                    <a href="${src}" target="_blank" style="color:#FF9800; text-decoration:none; margin:0 10px; border:1px solid #FF9800; padding:8px 16px; border-radius:4px;">Открыть в новой вкладке</a>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            const modalImg = document.getElementById('modalImg');
+            const captionText = document.getElementById('caption');
+            const downloadLink = document.getElementById('downloadLink');
+            const copyLinkBtn = document.getElementById('copyLinkBtn');
+            const span = modal.querySelector('.close');
+            
+            modalImg.src = src;
+            captionText.innerHTML = filename || "Изображение";
+            
+            span.onclick = function() { 
+                modal.remove();
+            }
+            
+            modal.onclick = function(event) {
+                if (event.target === modal) {
+                    modal.remove();
+                }
+            }
+            
+            copyLinkBtn.onclick = function() {
+                navigator.clipboard.writeText(src).then(() => {
+                    const originalText = copyLinkBtn.innerText;
+                    copyLinkBtn.innerText = "Скопировано!";
+                    setTimeout(() => copyLinkBtn.innerText = originalText, 2000);
+                });
+            };
+            
+            // Закрытие по Esc
+            const escHandler = function(event) {
+                if (event.key === "Escape") {
+                    modal.remove();
+                    document.removeEventListener('keydown', escHandler);
+                }
+            };
+            document.addEventListener('keydown', escHandler);
+        }
+        
         async function openChat(chatId) {
             // Закрываем предыдущее WebSocket соединение для этого чата если оно есть
             if (wsConnections[chatId]) {
@@ -932,60 +990,6 @@
             }
 
             const myUserId = getCurrentUserId();
-            
-            // Функция для открытия модального окна с изображением
-            function openImageModal(src, filename) {
-                const modal = document.createElement('div');
-                modal.id = 'imageModal';
-                modal.style.cssText = 'display:block; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.9);';
-                modal.innerHTML = `
-                    <span class="close" style="position:absolute; top:15px; right:35px; color:#f1f1f1; font-size:40px; font-weight:bold; cursor:pointer;">&times;</span>
-                    <img class="modal-content" id="modalImg" style="margin:auto; display:block; max-width:90%; max-height:90%; margin-top:5%;">
-                    <div id="caption" style="margin:-20px auto 0; display:block; width:80%; max-width:700px; text-align:center; color:#ccc; padding:10px 0; height:150px;"></div>
-                    <div style="text-align:center; margin-top:10px;">
-                        <a id="downloadLink" href="${src}" download="${filename}" style="color:#4CAF50; text-decoration:none; margin:0 10px; border:1px solid #4CAF50; padding:8px 16px; border-radius:4px;">Скачать оригинал</a>
-                        <button id="copyLinkBtn" style="color:#fff; background:#2196F3; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin:0 10px;">Копировать ссылку</button>
-                        <a href="${src}" target="_blank" style="color:#FF9800; text-decoration:none; margin:0 10px; border:1px solid #FF9800; padding:8px 16px; border-radius:4px;">Открыть в новой вкладке</a>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-                
-                const modalImg = document.getElementById('modalImg');
-                const captionText = document.getElementById('caption');
-                const downloadLink = document.getElementById('downloadLink');
-                const copyLinkBtn = document.getElementById('copyLinkBtn');
-                const span = modal.querySelector('.close');
-                
-                modalImg.src = src;
-                captionText.innerHTML = filename || "Изображение";
-                
-                span.onclick = function() { 
-                    modal.remove();
-                }
-                
-                modal.onclick = function(event) {
-                    if (event.target === modal) {
-                        modal.remove();
-                    }
-                }
-                
-                copyLinkBtn.onclick = function() {
-                    navigator.clipboard.writeText(src).then(() => {
-                        const originalText = copyLinkBtn.innerText;
-                        copyLinkBtn.innerText = "Скопировано!";
-                        setTimeout(() => copyLinkBtn.innerText = originalText, 2000);
-                    });
-                };
-                
-                // Закрытие по Esc
-                const escHandler = function(event) {
-                    if (event.key === "Escape") {
-                        modal.remove();
-                        document.removeEventListener('keydown', escHandler);
-                    }
-                };
-                document.addEventListener('keydown', escHandler);
-            }
             
             messages.forEach(msg => {
                 const div = document.createElement('div');
