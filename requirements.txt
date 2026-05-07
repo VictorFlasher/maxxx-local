@@ -7,4 +7,4 @@ python-jose[cryptography]
 jinja2
 slowapi
 defusedxml
-redis
+python-multipart

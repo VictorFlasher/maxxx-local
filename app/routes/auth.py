@@ -269,8 +269,6 @@ def get_current_user(token: str) -> int:
     Проверяет срок действия токена и другие claims.
     Выбрасывает ValueError при ошибке — обрабатывается вручную.
     """
-    import logging
-    logger = logging.getLogger(__name__)
     
     try:
         logger.info(f"get_current_user: декодирование токена с SECRET_KEY={SECRET_KEY[:8]}...")

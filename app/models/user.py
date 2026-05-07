@@ -11,10 +11,13 @@
 """
 
 import re
+import logging
 import bcrypt
 import psycopg2
 from typing import Optional, Tuple, List
 from ..database import get_db_connection, release_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def create_user(username: str, email: str, password: str, secure_hash: bool = True) -> None:
@@ -190,9 +193,6 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
             "is_admin": row[3],
             "is_banned": row[4]
         }
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка при получении пользователя {user_id}: {e}")
         return None
     finally:
@@ -371,9 +371,6 @@ def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -
         conn.commit()
         return True
     except Exception as e:
-        conn.rollback()
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка при бане пользователя {target_user_id}: {e}")
         return False
     finally:
@@ -417,9 +414,6 @@ def unban_user(user_id: int, admin_user_id: int) -> bool:
         conn.commit()
         return True
     except Exception as e:
-        conn.rollback()
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка при разбане пользователя {user_id}: {e}")
         return False
     finally:
