@@ -299,18 +299,60 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
         file_url: URL файла
         file_type: Тип файла (расширение)
     """
+    from ..database import get_schema_name
+    
     # 1. Сохраняем в БД
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute(
-            """
-            INSERT INTO messages (chat_id, sender_id, file_path, created_at)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (chat_id, user_id, file_url, datetime.now(timezone.utc)),
-        )
+        schema = get_schema_name()
+        
+        # Проверяем наличие колонок file_path и file_type
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = %s
+            AND table_name = 'messages' 
+            AND column_name IN ('file_path', 'file_type')
+        """, (schema,))
+        existing_columns = [row[0] for row in cur.fetchall()]
+        
+        has_file_path = 'file_path' in existing_columns
+        has_file_type = 'file_type' in existing_columns
+        
+        if not has_file_path and not has_file_type:
+            # Старая версия БД - используем content для хранения пути к файлу
+            cur.execute(
+                """
+                INSERT INTO messages (chat_id, sender_id, content, created_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (chat_id, user_id, f"[Файл]: {file_url}", datetime.now(timezone.utc)),
+            )
+        elif has_file_path and not has_file_type:
+            # Есть только file_path
+            cur.execute(
+                """
+                INSERT INTO messages (chat_id, sender_id, file_path, created_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (chat_id, user_id, file_url, datetime.now(timezone.utc)),
+            )
+        else:
+            # Полная версия с обоими колонками
+            cur.execute(
+                """
+                INSERT INTO messages (chat_id, sender_id, file_path, file_type, created_at)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (chat_id, user_id, file_url, file_type, datetime.now(timezone.utc)),
+            )
+        
         conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"❌ Ошибка при сохранении файла в БД: {e}")
+        raise
     finally:
         cur.close()
         release_db_connection(conn)

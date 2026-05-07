@@ -23,6 +23,16 @@ if not os.getenv("DB_PASS"):
 # Имя схемы берётся из переменной окружения
 SCHEMA_NAME = os.getenv("DB_SCHEMA", "maxxx_local")
 
+
+def get_schema_name() -> str:
+    """
+    Возвращает имя текущей схемы для использования в запросах.
+    
+    Returns:
+        str: Имя схемы
+    """
+    return SCHEMA_NAME
+
 # === Пул соединений ===
 # Глобальный пул соединений для производительности
 db_pool: Optional[pool.ThreadedConnectionPool] = None
