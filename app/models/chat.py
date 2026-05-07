@@ -664,3 +664,69 @@ def get_chat_last_message_id(chat_id: int) -> Optional[int]:
     finally:
         cur.close()
         release_db_connection(conn)
+
+
+def delete_group_chat(chat_id: int, user_id: int) -> bool:
+    """
+    Удаляет групповой чат. Только создатель может удалить.
+    Также удаляет все файлы сообщений с диска.
+    
+    Args:
+        chat_id: ID чата
+        user_id: ID пользователя (должен быть создателем)
+    
+    Returns:
+        True если успешно, False если ошибка
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Проверяем, что чат существует, групповой и пользователь - создатель
+        cur.execute("""
+            SELECT created_by FROM maxxx_local.chats
+            WHERE chat_id = %s AND is_group = TRUE
+        """, (chat_id,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        
+        created_by = row[0]
+        
+        if user_id != created_by:
+            return False
+
+        # 1. Получаем все файлы перед удалением сообщений
+        cur.execute("SELECT file_path FROM maxxx_local.messages WHERE chat_id = %s AND file_path IS NOT NULL", (chat_id,))
+        file_paths = [row[0] for row in cur.fetchall()]
+        
+        # 2. Удаляем всех участников из chat_members
+        cur.execute("DELETE FROM maxxx_local.chat_members WHERE chat_id = %s", (chat_id,))
+        
+        # 3. Удаляем все сообщения в чате
+        cur.execute("DELETE FROM maxxx_local.messages WHERE chat_id = %s", (chat_id,))
+        
+        # 4. Удаляем сам чат
+        cur.execute("DELETE FROM maxxx_local.chats WHERE chat_id = %s", (chat_id,))
+        
+        conn.commit()
+        
+        # 5. Удаляем файлы с диска после успешной транзакции
+        for file_path in file_paths:
+            try:
+                # Убираем ведущий слэш если есть
+                clean_path = file_path.lstrip('/')
+                full_path = os.path.join(os.getenv('UPLOAD_DIR', '/workspace'), clean_path)
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                    logger.info(f"Удалён файл {full_path}")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить файл {file_path}: {e}")
+        
+        return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Ошибка удаления группового чата {chat_id}: {e}")
+        return False
+    finally:
+        cur.close()
+        release_db_connection(conn)

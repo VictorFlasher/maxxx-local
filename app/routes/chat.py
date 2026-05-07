@@ -799,18 +799,49 @@ def leave_group_chat(
     return {"status": "success"}
 
 
-@router.delete("/chats/{chat_id}", summary="Удалить личный чат")
-def delete_private_chat_endpoint(
+@router.delete("/chats/{chat_id}", summary="Удалить чат (личный или групповой)")
+def delete_chat_endpoint(
     chat_id: int,
     current_user_id: int = Depends(get_current_user_from_header),
 ):
     """
-    Удаляет личный чат. Доступно любому из участников.
-    Групповые чаты нельзя удалять этим методом.
+    Удаляет чат (личный или групповой). 
+    - Для личных чатов: доступно любому из участников.
+    - Для групповых чатов: доступно только создателю/владельцу.
+    При удалении удаляются все сообщения и файлы из БД и с диска.
     """
-    if not delete_private_chat(chat_id, current_user_id):
-        raise HTTPException(status_code=403, detail="Нет доступа к чату или чат не найден")
-    return {"status": "success", "message": "Чат удалён"}
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Определяем тип чата
+        cur.execute("SELECT is_group, created_by FROM maxxx_local.chats WHERE chat_id = %s", (chat_id,))
+        row = cur.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Чат не найден")
+        
+        is_group, created_by = row
+        
+        if is_group:
+            # Для группового чата проверяем, что пользователь - создатель
+            if current_user_id != created_by:
+                raise HTTPException(status_code=403, detail="Только создатель может удалить групповой чат")
+            
+            # Импортируем функцию удаления группового чата
+            from ..models.chat import delete_group_chat
+            if not delete_group_chat(chat_id, current_user_id):
+                raise HTTPException(status_code=500, detail="Ошибка при удалении группового чата")
+        else:
+            # Для личного чата используем существующую функцию
+            if not delete_private_chat(chat_id, current_user_id):
+                raise HTTPException(status_code=403, detail="Нет доступа к чату или чат не найден")
+        
+        return {"status": "success", "message": "Чат удалён"}
+    except HTTPException:
+        raise
+    finally:
+        cur.close()
+        release_db_connection(conn)
 
 
 @router.get("/users", summary="Получить список всех пользователей")
@@ -1040,14 +1071,15 @@ def delete_message(
     Удаляет сообщение.
     Можно удалить только своё сообщение или если пользователь - администратор.
     После удаления отправляет уведомление всем участникам чата через WebSocket.
+    Также удаляет файл сообщения с диска, если он был прикреплён.
     """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Проверяем, существует ли сообщение и является ли пользователь админом или владельцем
+        # Проверяем, существует ли сообщение и получаем данные о файле
         cur.execute(
             """
-            SELECT sender_id, chat_id FROM maxxx_local.messages WHERE message_id = %s
+            SELECT sender_id, chat_id, file_path FROM maxxx_local.messages WHERE message_id = %s
             """,
             (message_id,)
         )
@@ -1056,11 +1088,12 @@ def delete_message(
         if not row:
             raise HTTPException(status_code=404, detail="Сообщение не найдено")
         
-        sender_id, chat_id = row[0], row[1]
+        sender_id, chat_id, file_path = row
         
         # Проверяем права (владелец или админ)
         cur.execute("SELECT is_admin FROM maxxx_local.users WHERE user_id = %s", (current_user_id,))
-        is_admin = cur.fetchone()[0]
+        is_admin_result = cur.fetchone()
+        is_admin = is_admin_result[0] if is_admin_result else False
         
         if sender_id != current_user_id and not is_admin:
             raise HTTPException(status_code=403, detail="Нет прав на удаление этого сообщения")
@@ -1068,6 +1101,10 @@ def delete_message(
         # Удаляем сообщение из БД
         cur.execute("DELETE FROM maxxx_local.messages WHERE message_id = %s", (message_id,))
         conn.commit()
+        
+        # Удаляем файл с диска, если он был прикреплён
+        if file_path:
+            background_tasks.add_task(_delete_file_from_disk, file_path)
         
         # Отправляем уведомление всем участникам чата через WebSocket
         from ..models.chat import _get_chat_members
@@ -1106,6 +1143,24 @@ def delete_message(
     finally:
         cur.close()
         release_db_connection(conn)
+
+
+def _delete_file_from_disk(file_path: str) -> None:
+    """
+    Фоновая задача для удаления файла с диска.
+    
+    Args:
+        file_path: Путь к файлу (относительный, например /uploads/filename.ext)
+    """
+    try:
+        # Убираем ведущий слэш если есть
+        clean_path = file_path.lstrip('/')
+        full_path = os.path.join(os.getenv('UPLOAD_DIR', 'uploads'), clean_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+            logger.info(f"Удалён файл {full_path}")
+    except Exception as e:
+        logger.warning(f"Не удалось удалить файл {file_path}: {e}")
 
 
 class ReportMessageRequest(BaseModel):
