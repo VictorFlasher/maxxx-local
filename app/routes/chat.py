@@ -943,7 +943,6 @@ def edit_message(
                 cache_set(cache_key, sender_username, ttl=600)
         
         # Рассылаем обновление
-        import asyncio
         from fastapi.websockets import WebSocketState
         global active_connections
         for user_id in members:
@@ -1025,7 +1024,6 @@ def delete_message(
             cache_set(chat_type_cache_key, chat_type, ttl=600)
         
         # Рассылаем обновление
-        import asyncio
         from fastapi.websockets import WebSocketState
         global active_connections
         for user_id in members:

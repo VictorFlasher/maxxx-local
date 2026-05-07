@@ -6,33 +6,33 @@ __pycache__/
 *.pyd
 
 # Dependencies
-.venv/
 venv/
-env/
+.venv/
+.env
+.env.local
+*.env.*
 
 # Logs
 *.log
 
-# Temporary files
-*.tmp
+# Editor/IDE
+.vscode/
+.idea/
 *.swp
 *.swo
+*.tmp
 
-# Environment variables
-.env
-.env.local
-*.env.*
+# Build artifacts
+dist/
+build/
+target/
 
 # Coverage
 .coverage
 coverage/
 htmlcov/
 
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
+# Testing
+.pytest_cache/
+.mypy_cache/
 ```

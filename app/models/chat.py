@@ -531,8 +531,6 @@ def log_connection_event(user_id: int, event_type: str) -> None:
     except Exception as e:
         conn.rollback()
         # Не выбрасываем ошибку, чтобы не ломать основной функционал
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка логирования события подключения: {e}")
     finally:
         cur.close()
