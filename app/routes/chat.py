@@ -333,19 +333,19 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
             # Есть только file_path
             cur.execute(
                 """
-                INSERT INTO messages (chat_id, sender_id, file_path, created_at)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO messages (chat_id, sender_id, content, file_path, created_at)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (chat_id, user_id, file_url, datetime.now(timezone.utc)),
+                (chat_id, user_id, f"[Файл]: {file_url}", file_url, datetime.now(timezone.utc)),
             )
         else:
             # Полная версия с обоими колонками
             cur.execute(
                 """
-                INSERT INTO messages (chat_id, sender_id, file_path, file_type, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO messages (chat_id, sender_id, content, file_path, file_type, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (chat_id, user_id, file_url, file_type, datetime.now(timezone.utc)),
+                (chat_id, user_id, f"[Файл]: {file_url}", file_url, file_type, datetime.now(timezone.utc)),
             )
         
         conn.commit()

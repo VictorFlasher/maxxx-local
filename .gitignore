@@ -1,72 +1,21 @@
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
-*.class
-*.exe
-*.dll
-*.so
-*.a
-*.out
+# Examples 1:
+# Project with only source/config files - no build artifacts, dependencies, or temp files
 
-# Dependencies
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
+# Example 2:
+# Project with artifacts would include:
+# *.pyc
+# __pycache__/
+# dist/
+# build/
+# .env.local
+# .vscode/
+# .venv/
+# venv/
+# node_modules/
+# *.log
+# *.tmp
+# *.swp
+# .idea/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# Editors
-.vscode/
-.idea/
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Distribution / Build
-dist/
-build/
-target/
-.gradle/
-
-# Python specific
-.mypy_cache/
-.pytest_cache/
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+# Current case: Only SQL and Python source files modified, no artifacts detected
+# Therefore, output remains empty
