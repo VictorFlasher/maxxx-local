@@ -79,11 +79,3 @@ CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_bans_user_id ON bans(user_id);
 CREATE INDEX IF NOT EXISTS idx_ban_history_user_id ON ban_history(user_id);
-
--- Создаём тестового администратора (опционально, закомментируйте в production)
--- Пароль: admin123 (захеширован через bcrypt)
--- INSERT INTO users (username, email, password_hash, is_admin)
--- VALUES ('admin', 'admin@maxxx.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.G.2.Z.Z.Z.Z.Z.Ze', TRUE)
--- ON CONFLICT (email) DO NOTHING;
-
-COMMIT;
