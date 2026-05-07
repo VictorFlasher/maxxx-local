@@ -401,6 +401,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
     Удаляет пользователя из группового чата.
     Может сделать владелец/создатель или сам пользователь (покинуть чат).
     Если после удаления не осталось участников - чат автоматически удаляется.
+    Также удаляет файлы сообщений с диска при удалении чата.
     
     Returns:
         True если успешно, False если ошибка
@@ -428,10 +429,30 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
         
         # Если участников не осталось - удаляем чат и все сообщения
         if remaining_count == 0:
+            # Получаем все файлы перед удалением сообщений
+            cur.execute("SELECT file_path FROM maxxx_local.messages WHERE chat_id = %s AND file_path IS NOT NULL", (chat_id,))
+            file_paths = [row[0] for row in cur.fetchall()]
+            
             cur.execute("DELETE FROM maxxx_local.messages WHERE chat_id = %s", (chat_id,))
             cur.execute("DELETE FROM maxxx_local.chats WHERE chat_id = %s", (chat_id,))
+            
+            conn.commit()
+            
+            # Удаляем файлы с диска после успешной транзакции
+            import os
+            for file_path in file_paths:
+                try:
+                    # Убираем ведущий слэш если есть
+                    clean_path = file_path.lstrip('/')
+                    full_path = os.path.join(os.getenv('UPLOAD_DIR', '/workspace'), clean_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        logger.info(f"Удалён файл {full_path}")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить файл {file_path}: {e}")
+        else:
+            conn.commit()
         
-        conn.commit()
         return True
     except Exception as e:
         conn.rollback()
@@ -444,6 +465,7 @@ def remove_user_from_group_chat(chat_id: int, user_id: int, remover_id: int) -> 
 def delete_private_chat(chat_id: int, user_id: int) -> bool:
     """
     Удаляет личный чат. Любой из участников может удалить.
+    Также удаляет все файлы сообщений с диска.
     """
     conn = get_db_connection()
     cur = conn.cursor()
@@ -466,13 +488,30 @@ def delete_private_chat(chat_id: int, user_id: int) -> bool:
         if user_id != created_by and not is_member:
             return False
 
-        # 1. Удаляем все сообщения в чате
+        # 1. Получаем все файлы перед удалением сообщений
+        cur.execute("SELECT file_path FROM maxxx_local.messages WHERE chat_id = %s AND file_path IS NOT NULL", (chat_id,))
+        file_paths = [row[0] for row in cur.fetchall()]
+        
+        # 2. Удаляем все сообщения в чате
         cur.execute("DELETE FROM maxxx_local.messages WHERE chat_id = %s", (chat_id,))
         
-        # 2. Удаляем сам чат
+        # 3. Удаляем сам чат
         cur.execute("DELETE FROM maxxx_local.chats WHERE chat_id = %s", (chat_id,))
         
         conn.commit()
+        
+        # 4. Удаляем файлы с диска после успешной транзакции
+        for file_path in file_paths:
+            try:
+                # Убираем ведущий слэш если есть
+                clean_path = file_path.lstrip('/')
+                full_path = os.path.join(os.getenv('UPLOAD_DIR', '/workspace'), clean_path)
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                    logger.info(f"Удалён файл {full_path}")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить файл {file_path}: {e}")
+        
         return True
     except Exception as e:
         conn.rollback()
