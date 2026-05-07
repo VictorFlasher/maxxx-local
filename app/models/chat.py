@@ -257,7 +257,7 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         is_group = row[0]
         
         cur.execute("""
-            SELECT m.message_id, m.sender_id, u.username, m.content, m.created_at, m.is_edited, m.edited_at
+            SELECT m.message_id, m.sender_id, u.username, m.content, m.created_at, m.is_edited, m.edited_at, m.file_path, m.file_type
             FROM maxxx_local.messages m
             JOIN maxxx_local.users u ON m.sender_id = u.user_id
             WHERE m.chat_id = %s
@@ -268,15 +268,28 @@ def get_chat_history(chat_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         rows = cur.fetchall()
         result = []
         for row in rows:
+            message_id, sender_id, username, content, created_at, is_edited, edited_at, file_path, file_type = row
+            
+            # Если file_path не заполнен, но content содержит формат "[Файл]: URL", извлекаем путь
+            if not file_path and content and content.startswith('[Файл]: '):
+                file_path = content.replace('[Файл]: ', '').strip()
+                # Определяем тип файла из расширения
+                if not file_type:
+                    _, ext = os.path.splitext(file_path)
+                    file_type = ext.lower() if ext else ''
+                content = None  # Очищаем content, так как файл теперь в file_path
+            
             msg = {
-                "message_id": row[0],
-                "sender_id": row[1],
-                "sender_username": row[2],
-                "text": row[3],
-                "timestamp": row[4].isoformat() if row[4] else None,
-                "is_edited": row[5],
-                "edited_at": row[6].isoformat() if row[6] else None,
-                "chat_type": "group" if is_group else "private"
+                "message_id": message_id,
+                "sender_id": sender_id,
+                "sender_username": username,
+                "text": content,
+                "timestamp": created_at.isoformat() if created_at else None,
+                "is_edited": is_edited,
+                "edited_at": edited_at.isoformat() if edited_at else None,
+                "chat_type": "group" if is_group else "private",
+                "file_path": file_path,
+                "file_type": file_type
             }
 
             result.append(msg)
