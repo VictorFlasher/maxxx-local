@@ -44,16 +44,17 @@ CREATE TABLE IF NOT EXISTS chat_members (
 );
 
 -- Таблица сообщений
--- Включает поддержку файлов (file_path, file_type) сразу при создании
+-- Включает поддержку файлов (file_path, file_type, original_filename) сразу при создании
 CREATE TABLE IF NOT EXISTS messages (
     message_id SERIAL PRIMARY KEY,
     chat_id INTEGER REFERENCES chats(chat_id) ON DELETE CASCADE,
     sender_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-    content TEXT NOT NULL,
-    file_path VARCHAR(500),        -- Путь к файлу или URL
-    file_type VARCHAR(50),         -- Тип файла (image/png, application/pdf и т.д.)
-    encrypted_key BYTEA,           -- Для шифрования (если используется)
-    iv BYTEA,                      -- Вектор инициализации
+    content TEXT,                      -- Текст сообщения или NULL для файлов
+    file_path VARCHAR(500),            -- Путь к файлу или URL (зашифрованное имя)
+    file_type VARCHAR(50),             -- Тип файла (image/png, application/pdf и т.д.)
+    original_filename VARCHAR(255),    -- Оригинальное имя файла для отображения и скачивания
+    encrypted_key BYTEA,               -- Для шифрования (если используется)
+    iv BYTEA,                          -- Вектор инициализации
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_edited BOOLEAN DEFAULT FALSE,
     edited_at TIMESTAMP WITH TIME ZONE
@@ -111,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_file_path ON messages(file_path) WHERE file_path IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_original_filename ON messages(original_filename) WHERE original_filename IS NOT NULL;
 
 -- Индексы для участников чата
 CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);

@@ -289,15 +289,16 @@ async def _broadcast_status_to_all_chats(user_id: int, status: str) -> None:
                     pass
 
 
-async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_type: str) -> None:
+async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_type: str, original_filename: str) -> None:
     """
     Фоновая задача: сохраняет файл в БД и уведомляет участников.
 
     Args:
         chat_id: ID чата
         user_id: ID отправителя
-        file_url: URL файла
+        file_url: URL файла (зашифрованное имя)
         file_type: Тип файла (расширение)
+        original_filename: Оригинальное имя файла для отображения
     """
     from ..database import get_schema_name
     
@@ -307,18 +308,19 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
     try:
         schema = get_schema_name()
         
-        # Проверяем наличие колонок file_path и file_type
+        # Проверяем наличие колонок file_path, file_type и original_filename
         cur.execute("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_schema = %s
             AND table_name = 'messages' 
-            AND column_name IN ('file_path', 'file_type')
+            AND column_name IN ('file_path', 'file_type', 'original_filename')
         """, (schema,))
         existing_columns = [row[0] for row in cur.fetchall()]
         
         has_file_path = 'file_path' in existing_columns
         has_file_type = 'file_type' in existing_columns
+        has_original_filename = 'original_filename' in existing_columns
         
         if not has_file_path and not has_file_type:
             # Старая версия БД - используем content для хранения пути к файлу
@@ -338,14 +340,23 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
                 """,
                 (chat_id, user_id, f"[Файл]: {file_url}", file_url, datetime.now(timezone.utc)),
             )
-        else:
-            # Полная версия с обоими колонками
+        elif has_file_path and has_file_type and not has_original_filename:
+            # Есть file_path и file_type, но нет original_filename
             cur.execute(
                 """
                 INSERT INTO messages (chat_id, sender_id, content, file_path, file_type, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (chat_id, user_id, f"[Файл]: {file_url}", file_url, file_type, datetime.now(timezone.utc)),
+            )
+        else:
+            # Полная версия со всеми колонками
+            cur.execute(
+                """
+                INSERT INTO messages (chat_id, sender_id, content, file_path, file_type, original_filename, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (chat_id, user_id, None, file_url, file_type, original_filename, datetime.now(timezone.utc)),
             )
         
         conn.commit()
@@ -388,6 +399,7 @@ async def _notify_file_upload(chat_id: int, user_id: int, file_url: str, file_ty
         "text": None,
         "file_path": file_url,
         "file_type": file_type,
+        "original_filename": original_filename,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     
@@ -458,7 +470,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
             cur = conn.cursor()
             try:
                 cur.execute("""
-                    SELECT message_id, sender_id, content, file_path, file_type, created_at 
+                    SELECT message_id, sender_id, content, file_path, file_type, original_filename, created_at 
                     FROM maxxx_local.messages 
                     WHERE chat_id = %s AND message_id > %s 
                     ORDER BY message_id ASC
@@ -466,7 +478,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                 missed_messages = cur.fetchall()
                 
                 for msg in missed_messages:
-                    msg_id, sender_id, text, file_path, file_type, created_at = msg
+                    msg_id, sender_id, text, file_path, file_type, original_filename, created_at = msg
                     # Кэшируем тип чата
                     chat_type_cache_key = f"chat_type:{chat_id}"
                     chat_type_cached = await cache_get(chat_type_cache_key)
@@ -496,6 +508,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, last_message_id
                         "text": text if text else file_path,
                         "file_path": file_path,
                         "file_type": file_type,
+                        "original_filename": original_filename,
                         "timestamp": created_at.isoformat() if created_at else None,
                     })
             finally:
@@ -722,13 +735,17 @@ async def upload_file(  # ← ОБЯЗАТЕЛЬНО async
     with open(filepath, "wb") as f:
         f.write(contents)  # ← используем уже прочитанные данные
 
+    # Сохраняем оригинальное имя файла для отображения
+    original_filename = file.filename or f"file{ext_lower}"
+    
     # Фоновая задача
     background_tasks.add_task(
         _notify_file_upload,
         chat_id=chat_id,
         user_id=current_user_id,
         file_url=f"/uploads/{safe_filename}",
-        file_type=ext_lower
+        file_type=ext_lower,
+        original_filename=original_filename
     )
 
     return {"file_url": f"/uploads/{safe_filename}"}
