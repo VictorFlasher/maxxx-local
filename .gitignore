@@ -1,5 +1,20 @@
 ```
-# Migration files
-app/migrations/*.sql
-app/migrations/README_FIX.md
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
 ```
