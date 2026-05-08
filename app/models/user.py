@@ -323,7 +323,8 @@ def search_users(query: str, exclude_user_id: Optional[int] = None) -> List[dict
 
 def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -> bool:
     """
-    Блокирует пользователя с указанием причины и записью в историю.
+    Блокирует пользователя с указанием причины.
+    Запись в историю банов добавляется автоматически через триггер БД.
     Нельзя банить админов и себя.
     
     Args:
@@ -353,6 +354,7 @@ def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -
         
         # 2. Создаём запись в таблице bans (бессрочный бан)
         # Используем ON CONFLICT для обновления существующей записи
+        # Триггер автоматически добавит запись в ban_history
         cur.execute("""
             INSERT INTO bans (user_id, banned_by, reason)
             VALUES (%s, %s, %s)
@@ -360,12 +362,6 @@ def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -
                 banned_by = EXCLUDED.banned_by,
                 reason = EXCLUDED.reason,
                 created_at = CURRENT_TIMESTAMP
-        """, (target_user_id, admin_user_id, reason))
-        
-        # 3. Записываем в историю
-        cur.execute("""
-            INSERT INTO ban_history (user_id, action, performed_by, reason)
-            VALUES (%s, 'ban', %s, %s)
         """, (target_user_id, admin_user_id, reason))
         
         conn.commit()
@@ -378,13 +374,15 @@ def ban_user_with_reason(target_user_id: int, admin_user_id: int, reason: str) -
         release_db_connection(conn)
 
 
-def unban_user(user_id: int, admin_user_id: int) -> bool:
+def unban_user(user_id: int, admin_user_id: int, reason: Optional[str] = None) -> bool:
     """
-    Разбанивает пользователя с записью в историю.
+    Разбанивает пользователя. 
+    Запись в историю банов добавляется вручную с причиной разбана.
     
     Args:
         user_id: ID пользователя для разбана
         admin_user_id: ID администратора, выполняющего разбан
+        reason: Причина разбана (опционально, записывается в историю)
         
     Returns:
         True, если успешно, False иначе
@@ -402,14 +400,14 @@ def unban_user(user_id: int, admin_user_id: int) -> bool:
         # 1. Снимаем флаг бана
         cur.execute("UPDATE users SET is_banned = false WHERE user_id = %s", (user_id,))
         
-        # 2. Удаляем запись из таблицы активных банов
-        cur.execute("DELETE FROM maxxx_local.bans WHERE user_id = %s", (user_id,))
-        
-        # 3. Записываем в историю
+        # 2. Добавляем запись в историю с причиной разбана
         cur.execute("""
-            INSERT INTO ban_history (user_id, action, performed_by)
-            VALUES (%s, 'unban', %s)
-        """, (user_id, admin_user_id))
+            INSERT INTO ban_history (user_id, action, performed_by, reason)
+            VALUES (%s, 'unban', %s, %s)
+        """, (user_id, admin_user_id, reason))
+        
+        # 3. Удаляем запись из таблицы активных банов
+        cur.execute("DELETE FROM maxxx_local.bans WHERE user_id = %s", (user_id,))
         
         conn.commit()
         return True
