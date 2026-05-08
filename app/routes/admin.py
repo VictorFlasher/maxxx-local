@@ -33,8 +33,9 @@ class BanUserRequest(BaseModel):
 
 
 class UnbanUserRequest(BaseModel):
-    """Запрос на разблокировку пользователя."""
+    """Запрос на разблокировку пользователя с причиной."""
     user_id: int
+    reason: Optional[str] = None  # Причина разбана (опционально)
 
 
 class ReviewReportRequest(BaseModel):
@@ -98,14 +99,15 @@ def unban_user_endpoint(
 ):
     """
     Разблокирует пользователя. Доступно только администраторам.
-    Запись о разбане сохраняется в истории.
+    Запись о разбане сохраняется в истории с указанием причины.
     """
     if not is_user_admin(current_user_id):
         raise HTTPException(status_code=403, detail="Требуются права администратора")
 
     target_id = request.user_id
+    reason = request.reason
     
-    if not unban_user(target_id, current_user_id):
+    if not unban_user(target_id, current_user_id, reason):
         raise HTTPException(status_code=400, detail="Не удалось разбанить (пользователь не найден или не забанен)")
 
     return {"status": "success", "unbanned_user_id": target_id}
